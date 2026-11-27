@@ -203,7 +203,7 @@ try {
         }
         $published = (int) $db->query("SELECT COUNT(*) FROM products WHERE status = 'published'")->fetchColumn();
         header('Cache-Control: no-store');
-        json_response(['ok' => true, 'status' => 'healthy', 'service' => 'hendy-store', 'database' => 'postgresql', 'storage' => 'neon-object-storage', 'auth' => env_value('NEON_AUTH_BASE_URL') !== null, 'administrators' => $adminCount, 'publishedProducts' => $published]);
+        json_response(['ok' => true, 'status' => 'healthy', 'service' => 'hendy-store', 'database' => $driver === 'pgsql' ? 'postgresql' : $driver, 'storage' => neon_object_storage_enabled() ? 'neon-object-storage' : 'unavailable', 'auth' => env_value('NEON_AUTH_BASE_URL') !== null, 'administrators' => $adminCount, 'publishedProducts' => $published]);
     }
     if ($action === 'download_file') {
         serve_package($db);
