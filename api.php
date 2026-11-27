@@ -46,7 +46,7 @@ function serve_package(PDO $db): never
     $stmt = $db->prepare("SELECT slug, price_type, download_url FROM products WHERE slug = :slug AND status = 'published' LIMIT 1");
     $stmt->execute([':slug' => $slug]);
     $product = $stmt->fetch();
-    if (!$product || $product['price_type'] === 'Paid' || !str_starts_with((string) $product['download_url'], 'file:')) {
+    if (!$product || !str_starts_with((string) $product['download_url'], 'file:')) {
         http_response_code(404);
         exit;
     }
@@ -379,7 +379,7 @@ try {
             $stmt = $db->prepare("SELECT id, price_type, download_url FROM products WHERE slug = :slug AND status = 'published' LIMIT 1");
             $stmt->execute([':slug' => $slug]);
             $product = $stmt->fetch();
-            if (!$product || $product['price_type'] === 'Paid' || !$product['download_url']) {
+            if (!$product || !$product['download_url']) {
                 json_response(['ok' => false, 'error' => 'Ứng dụng chưa có liên kết tải miễn phí hợp lệ.'], 404);
             }
             if (str_starts_with((string) $product['download_url'], 'file:')) {
@@ -406,7 +406,7 @@ try {
             $stmt = $db->prepare("SELECT id, price_type, download_url FROM products WHERE slug = :slug AND status = 'published' LIMIT 1");
             $stmt->execute([':slug' => $slug]);
             $product = $stmt->fetch();
-            if (!$product || $product['price_type'] === 'Paid' || trim((string) $product['download_url']) === '') {
+            if (!$product || trim((string) $product['download_url']) === '') {
                 http_response_code(404);
                 exit;
             }
