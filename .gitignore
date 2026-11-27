@@ -1,0 +1,15 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Private runtime storage (uploaded media/packages and local database)
+storage/*
+!storage/.htaccess
+!storage/.gitkeep
+
+# Local tooling
+.DS_Store
+Thumbs.db
+*.log
+.phpunit.cache/

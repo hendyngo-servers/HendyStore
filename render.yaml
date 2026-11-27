@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: hendy-store
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /api.php?action=health
+    disk:
+      name: hendy-store-data
+      mountPath: /var/data
+      sizeGB: 2
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: APP_ENV
+        value: production
+      - key: STORE_NAME
+        value: Hendy Store
+      - key: APP_URL
+        sync: false
+      - key: APP_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: STORAGE_PATH
+        value: /var/data/hendy-store
+      - key: SQLITE_PATH
+        value: /var/data/hendy-store/hendy-store.sqlite
+      - key: ALLOW_REGISTRATION
+        value: "false"
+      - key: FORCE_SECURE_COOKIES
+        value: "true"
+      - key: FORCE_HTTPS
+        value: "true"
+      - key: TRUST_PROXY_HEADERS
+        value: "true"

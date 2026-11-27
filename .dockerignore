@@ -1,0 +1,17 @@
+# Git and local configuration
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+
+# Local/private runtime data must never be baked into the image
+storage/*
+!storage/.htaccess
+!storage/.gitkeep
+
+# Build docs are not required inside the runtime image
+README.md
