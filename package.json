@@ -1,0 +1,24 @@
+{
+  "name": "hendy-store-neon",
+  "private": true,
+  "version": "2.1.0",
+  "type": "module",
+  "description": "Neon service configuration and browser integrations for Hendy Store.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "latest",
+    "@neon/realtime": "latest",
+    "@neondatabase/auth": "latest",
+    "pg": "latest"
+  },
+  "devDependencies": {
+    "@neon/config": "latest",
+    "esbuild": "latest"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

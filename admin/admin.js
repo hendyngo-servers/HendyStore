@@ -142,6 +142,27 @@
     }
   });
 
+  $('#generateDescription').addEventListener('click', async () => {
+    const form = $('#productForm');
+    const button = $('#generateDescription');
+    button.disabled = true;
+    $('#editorStatus').textContent = 'Neon AI Gateway đang soạn mô tả…';
+    try {
+      const result = await call('ai_product_copy', 'POST', {
+        title: form.elements.title.value,
+        developer: form.elements.developer.value,
+        category: form.elements.category.value,
+        shortDescription: form.elements.shortDescription.value
+      });
+      form.elements.description.value = result.data.description;
+      $('#editorStatus').textContent = 'Đã tạo mô tả. Hãy đọc và kiểm chứng nội dung trước khi lưu.';
+    } catch (error) {
+      $('#editorStatus').textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   $('#productForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = formValues();

@@ -8,7 +8,7 @@ $e=static fn(string $v):string=>htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'U
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f8fa">
 <meta name="description" content="Khám phá ứng dụng, công cụ và trò chơi tại Hendy Store."><title><?= $e($storeName) ?> — Khám phá ứng dụng</title>
 <link rel="canonical" href="<?= $e($base.'/') ?>"><meta property="og:type" content="website"><meta property="og:site_name" content="<?= $e($storeName) ?>"><meta property="og:title" content="<?= $e($storeName) ?> — Khám phá ứng dụng"><meta property="og:url" content="<?= $e($base.'/') ?>"><meta property="og:image" content="<?= $e($base.'/images/dummy.png') ?>">
-<link rel="icon" href="images/dummy.png"><link rel="stylesheet" href="g/fonts.css"><link rel="stylesheet" href="css/custom.261126163517.css"><script src="js/custom.261126163157.js" defer></script></head><body data-page="home">
+<link rel="icon" href="images/dummy.png"><link rel="stylesheet" href="g/fonts.css"><link rel="stylesheet" href="css/custom.261126163517.css"><script src="js/neon-client.bundle.js" defer></script><script src="js/custom.261126163157.js" defer></script></head><body data-page="home">
 <header class="site-header"><a class="brand" href="./"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span class="brand-name">Hendy <b>Store</b></span></a>
 <nav class="main-nav"><a class="nav-link active" href="./">Trang chủ</a><a class="nav-link" href="#apps">Ứng dụng</a><a class="nav-link" href="#top">Mới & nổi bật</a></nav>
 <form class="header-search" id="searchForm"><span class="search-icon">⌕</span><input id="searchInput" type="search" placeholder="Tìm ứng dụng, trò chơi..." aria-label="Tìm kiếm"><kbd>⌘ K</kbd></form>
