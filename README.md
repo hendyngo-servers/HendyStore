@@ -230,3 +230,21 @@ checks cần báo true cho postgres, objectStorage, auth, aiGateway, realtime. N
 ## 9. Trạng thái xác minh và những phần chưa thể xác nhận
 
 Các tệp mã nguồn/config đã được chuẩn bị và lưu trên nhánh feature/render-free-neon. Tuy nhiên trong môi trường phát triển hiện tại, truy cập npm registry bị lỗi DNS EAI_AGAIN, vì vậy chưa thể cài Neon CLI/npm packages, chạy lệnh neon init, thực hiện neon deploy, build Docker image hoặc chạy E2E trên Neon/Render. Cần chạy các bước trên trong máy có kết nối mạng và hoàn tất Neon login nếu CLI yêu cầu. Không coi service là healthy cho tới khi cả hai health endpoints trả ok:true và upload/download/Auth/AI/Realtime đã được thử thực tế.
+
+
+## 10. Store Ecosystem module (feature/store-ecosystem)
+
+The additive Store Ecosystem module provides:
+
+- OS-aware package selection for Windows, macOS, Android, iOS, Linux and universal builds, with a visible fallback when no compatible package is published.
+- Version records per product with platform, architecture, minimum OS, package size and release notes/changelog.
+- Product screenshot gallery, optional HTTPS video link, minimum system requirements and publisher-provided privacy notes.
+- Authenticated 1–5 star reviews with moderation; only approved reviews affect the public average. Admins can publish a developer/publisher reply.
+- Account library, version update notifications when a new current version is published, and the user's download history.
+- Store management at /admin/store-features.php and personal library at /library/.
+
+The module creates only new `app_*` tables and does not delete or rewrite existing users/products. Schema creation is idempotent and invoked when a Store Ecosystem API route is first used. The explicit additive PostgreSQL migration is also available at `database/migrations/20261128_store_ecosystem.sql`.
+
+**Distribution and payment limits:** an iOS IPA is not a one-click public install; use App Store, TestFlight or MDM distribution as appropriate. Paid checkout, payment verification, refunds and paid-download entitlements are not implemented by this module; Paid products remain locked by the existing application. A free download is added to the user's library only when the user is signed in at download time. Anonymous download history is aggregated without exposing raw IP addresses.
+
+Run CI on the `feature/store-ecosystem` branch before merging. Deploying the branch to Render/Neon is a separate operation and has not been performed by this repository change.
