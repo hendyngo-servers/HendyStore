@@ -11,6 +11,20 @@ foreach (['users','products','rate_limits','app_meta'] as $table) if (!in_array(
 $q=$db->prepare("SELECT password_hash FROM users WHERE email=:email AND role='admin'"); $q->execute([':email'=>'admin@example.test']);
 $hash=(string)$q->fetchColumn();
 if ($hash===''||!password_verify('Hendy-Store12!',$hash)) throw new RuntimeException('Environment administrator bootstrap failed.');
+
+// A changed Render secret must update an already-created admin account.
+$rotatedPassword = 'Hendy-Store12!Rotated';
+putenv('ADMIN_PASSWORD='.$rotatedPassword);
+$_ENV['ADMIN_PASSWORD'] = $rotatedPassword;
+ensure_environment_admin($db);
+$q=$db->prepare("SELECT password_hash FROM users WHERE lower(email)=:email AND role='admin'");
+$q->execute([':email'=>'admin@example.test']);
+$rotatedHash=(string)$q->fetchColumn();
+if ($rotatedHash==='' || !password_verify($rotatedPassword,$rotatedHash)) {
+    throw new RuntimeException('Existing administrator password synchronization failed.');
+}
+$adminCount=(int)$db->query("SELECT COUNT(*) FROM users WHERE role='admin'")->fetchColumn();
+if ($adminCount !== 1) throw new RuntimeException('Administrator bootstrap created a duplicate admin account.');
 $storage=storage_root(); if (!is_dir($storage)||!is_writable($storage)) throw new RuntimeException('Storage is not writable.');
 if (unicode_length('Hendy-Store12!')<12) throw new RuntimeException('Password length validation failed.');
 echo "Smoke test passed: schema, admin bootstrap, password hash and storage.\n";
