@@ -39,7 +39,7 @@ function appCard(p, featured) {
   if(featured) {
     return '<a class="featured-card" href="'+href+'"><img class="app-icon" src="'+icon+'" alt="" loading="lazy"><div class="featured-info"><span class="featured-label">'+(p.featured?'EDITOR PICK':'ĐƯỢC GIỚI THIỆU')+'</span><h3>'+esc(p.title)+'</h3><p>'+esc(p.shortDescription)+'</p><div class="featured-meta">'+esc(p.developer)+' · '+Number(p.downloads).toLocaleString('vi-VN')+' lượt tải</div></div></a>';
   }
-  const price=p.priceType==='Paid'?'Trả phí':(p.priceType==='Freemium'?'Freemium':'Miễn phí');
+  const price=p.priceType==='Paid'?(Number(p.priceAmountVnd||0).toLocaleString('vi-VN')+' ₫'):(p.priceType==='Freemium'?'Freemium':'Miễn phí');
   return '<a class="app-card" href="'+href+'"><div class="app-card-top"><img class="app-icon" src="'+icon+'" alt="" loading="lazy"><div><h3>'+esc(p.title)+'</h3><div class="app-developer">'+esc(p.developer)+'</div></div></div><p class="app-description">'+esc(p.shortDescription)+'</p><div class="app-meta"><span>★ '+Number(p.rating||0).toFixed(1)+' · '+Number(p.downloads||0).toLocaleString('vi-VN')+' lượt tải</span><span class="app-price">'+price+'</span></div></a>';
 }
 async function loadProducts() {
