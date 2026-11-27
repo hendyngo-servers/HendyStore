@@ -163,6 +163,31 @@ try {
             json_response(['ok' => false, 'status' => 'configuration_required', 'error' => 'Set APP_URL to the public HTTPS domain before launch.'], 503);
         }
         $db->query('SELECT 1')->fetchColumn();
+
+        // Send non-sensitive diagnostics to Render logs. Never include email, password, hashes or DSNs.
+        $driver = (string) $db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $databaseName = $driver === 'pgsql'
+            ? (string) $db->query('SELECT current_database()')->fetchColumn()
+            : $driver;
+        $seedEmail = strtolower(trim((string) env_value('ADMIN_EMAIL', '')));
+        $seedPassword = (string) env_value('ADMIN_PASSWORD', '');
+        $seedAccount = null;
+        if ($seedEmail !== '') {
+            $seedCheck = $db->prepare('SELECT role, password_hash FROM users WHERE LOWER(email) = :email LIMIT 1');
+            $seedCheck->execute([':email' => $seedEmail]);
+            $seedAccount = $seedCheck->fetch() ?: null;
+        }
+        $seedConfigured = $seedEmail !== '' && $seedPassword !== '';
+        $seedPasswordMatches = $seedAccount
+            && ($seedAccount['role'] ?? '') === 'admin'
+            && $seedPassword !== ''
+            && password_verify($seedPassword, (string) ($seedAccount['password_hash'] ?? ''));
+        error_log('[Hendy Store health] driver=' . $driver
+            . ' database=' . preg_replace('/[^a-zA-Z0-9_.-]/', '', $databaseName)
+            . ' admin_env=' . ($seedConfigured ? 'configured' : 'missing')
+            . ' admin_record=' . ($seedAccount && ($seedAccount['role'] ?? '') === 'admin' ? 'present' : 'missing_or_wrong_role')
+            . ' admin_password=' . ($seedPasswordMatches ? 'matches' : 'does_not_match'));
+
         $storage = neon_storage_probe();
         $adminCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
         if ($adminCount < 1) {
