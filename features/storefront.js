@@ -8,7 +8,6 @@ const state = { csrf:'', user:null, platform:'web' };
 function detectPlatform() {
   const ua = navigator.userAgent || '';
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
-  if (/iPad|iPhone|iPod/i.test(ua) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1)) return 'ios';
   if (/Android/i.test(ua)) return 'android';
   if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows';
   if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) return 'macos';
@@ -16,7 +15,7 @@ function detectPlatform() {
   return 'web';
 }
 function platformLabel(value) {
-  return ({windows:'Windows',macos:'macOS',android:'Android',ios:'iOS',linux:'Linux',web:'Web',universal:'Mọi nền tảng'})[value] || value;
+  return ({windows:'Windows',macos:'macOS',android:'Android',linux:'Linux',web:'Web',universal:'Mọi nền tảng'})[value] || value;
 }
 function formatBytes(value) {
   const bytes = Number(value || 0);
@@ -81,7 +80,7 @@ function renderSpecs(specs) {
   if (privacy) privacy.textContent = specs.privacy_details || 'Nhà phát triển chưa cung cấp thông tin quyền riêng tư riêng cho ứng dụng này. Xem thêm chính sách quyền riêng tư của cửa hàng.';
   if (video) video.innerHTML = specs.video_url ? '<a href="' + escapeHtml(specs.video_url) + '" target="_blank" rel="noopener noreferrer">▶ Xem video giới thiệu</a>' : '<span class="store-muted">Chưa có video giới thiệu.</span>';
 }
-function renderDownload(versions) {
+function renderDownload(versions, product) {
   const select = $('#storePlatform');
   const button = $('#storeDownload');
   const message = $('#storeBuildMessage');
@@ -109,7 +108,8 @@ function renderDownload(versions) {
     const minimum = chosen.min_os ? ' · Yêu cầu ' + chosen.min_os : '';
     message.textContent = platformLabel(platform) + ' · Phiên bản ' + chosen.version + ' · ' +
       formatBytes(chosen.package_size_bytes) + minimum;
-    if (platform === 'ios') message.textContent += ' · IPA cần cơ chế phân phối hợp lệ như App Store, TestFlight hoặc MDM.';
+    button.textContent = product?.priceType === 'Paid' ? 'Tạo đơn thanh toán' : 'Tải xuống ↓';
+    if (product?.priceType === 'Paid') message.textContent += ' · ' + Number(product.priceAmountVnd || 0).toLocaleString('vi-VN') + ' ₫';
   };
   select.addEventListener('change', selectBuild);
   selectBuild();
@@ -121,12 +121,15 @@ function renderDownload(versions) {
     button.classList.add('store-disabled');
     message.textContent = 'Đang xác thực gói tải an toàn…';
     try {
-      const result = await request('store_download_prepare', 'POST', {
-        slug: slug,
-        version_id: Number(selectedBuild.id || 0),
-        platform: select.value
-      });
-      window.location.assign(result.data.url);
+      if (product?.priceType === 'Paid') {
+        const result = await request('store_payment_create', 'POST', {slug:slug,version_id:Number(selectedBuild.id||0),platform:select.value});
+        const order = result.data;
+        message.innerHTML = '<strong>Đơn ' + escapeHtml(order.orderCode) + '</strong><br>Ngân hàng: ' + escapeHtml(order.bankName || order.bankCode) + '<br>Số tài khoản: <b>' + escapeHtml(order.accountNumber) + '</b><br>Người nhận: ' + escapeHtml(order.accountName || '') + '<br>Số tiền: <b>' + Number(order.amountVnd).toLocaleString('vi-VN') + ' ₫</b><br>Nội dung: <code>' + escapeHtml(order.paymentCode) + '</code><br><a href="../orders/">Theo dõi đơn hàng</a>';
+        button.textContent = 'Đơn đã tạo · Chờ thanh toán';
+      } else {
+        const result = await request('store_download_prepare', 'POST', {slug:slug,version_id:Number(selectedBuild.id||0),platform:select.value});
+        window.location.assign(result.data.url);
+      }
     } catch (error) {
       message.textContent = error.message;
       button.textContent = originalLabel;
@@ -147,7 +150,7 @@ function renderRelated(products) {
       ? '../api.php?action=media&file=' + encodeURIComponent(icon.slice(6))
       : (/^https:\/\//i.test(icon) ? icon : '../' + icon.replace(/^\/+/, ''));
     const href = '../apps/' + encodeURIComponent(item.slug);
-    const price = item.priceType === 'Paid' ? 'Trả phí' : (item.priceType === 'Freemium' ? 'Freemium' : 'Miễn phí');
+    const price = item.priceType === 'Paid' ? (Number(item.priceAmountVnd||0).toLocaleString('vi-VN')+' ₫') : (item.priceType === 'Freemium' ? 'Freemium' : 'Miễn phí');
     return '<a class="app-card store-related-card" href="' + escapeHtml(href) + '"><div class="app-card-top"><img class="app-icon" src="' +
       escapeHtml(image) + '" alt="" loading="lazy"><div><h3>' + escapeHtml(item.title) + '</h3><div class="app-developer">' +
       escapeHtml(item.developer) + '</div></div></div><p class="app-description">' + escapeHtml(item.shortDescription) +
@@ -188,7 +191,7 @@ async function init() {
     renderGallery(extras.screenshots || []);
     renderVersions(extras.versions || []);
     renderSpecs(extras.specs || {});
-    renderDownload(extras.versions || []);
+    renderDownload(extras.versions || [], results[3].data || {});
     renderReviewStats(extras.reviewStats || {});
     renderReviews(results[2].data || []);
     renderRelated(results[3].related || []);
