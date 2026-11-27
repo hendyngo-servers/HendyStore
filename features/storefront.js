@@ -108,8 +108,7 @@ function renderDownload(versions, product) {
     const minimum = chosen.min_os ? ' · Yêu cầu ' + chosen.min_os : '';
     message.textContent = platformLabel(platform) + ' · Phiên bản ' + chosen.version + ' · ' +
       formatBytes(chosen.package_size_bytes) + minimum;
-    button.textContent = product?.priceType === 'Paid' ? 'Tạo đơn thanh toán' : 'Tải xuống ↓';
-    if (product?.priceType === 'Paid') message.textContent += ' · ' + Number(product.priceAmountVnd || 0).toLocaleString('vi-VN') + ' ₫';
+    button.textContent = 'Tải xuống miễn phí ↓';
   };
   select.addEventListener('change', selectBuild);
   selectBuild();
@@ -121,15 +120,8 @@ function renderDownload(versions, product) {
     button.classList.add('store-disabled');
     message.textContent = 'Đang xác thực gói tải an toàn…';
     try {
-      if (product?.priceType === 'Paid') {
-        const result = await request('store_payment_create', 'POST', {slug:slug,version_id:Number(selectedBuild.id||0),platform:select.value});
-        const order = result.data;
-        message.innerHTML = '<strong>Đơn ' + escapeHtml(order.orderCode) + '</strong><br>Ngân hàng: ' + escapeHtml(order.bankName || order.bankCode) + '<br>Số tài khoản: <b>' + escapeHtml(order.accountNumber) + '</b><br>Người nhận: ' + escapeHtml(order.accountName || '') + '<br>Số tiền: <b>' + Number(order.amountVnd).toLocaleString('vi-VN') + ' ₫</b><br>Nội dung: <code>' + escapeHtml(order.paymentCode) + '</code><br><a href="../orders/">Theo dõi đơn hàng</a>';
-        button.textContent = 'Đơn đã tạo · Chờ thanh toán';
-      } else {
-        const result = await request('store_download_prepare', 'POST', {slug:slug,version_id:Number(selectedBuild.id||0),platform:select.value});
-        window.location.assign(result.data.url);
-      }
+      const result = await request('store_download_prepare', 'POST', {slug:slug,version_id:Number(selectedBuild.id||0),platform:select.value});
+      window.location.assign(result.data.url);
     } catch (error) {
       message.textContent = error.message;
       button.textContent = originalLabel;
@@ -150,7 +142,7 @@ function renderRelated(products) {
       ? '../api.php?action=media&file=' + encodeURIComponent(icon.slice(6))
       : (/^https:\/\//i.test(icon) ? icon : '../' + icon.replace(/^\/+/, ''));
     const href = '../apps/' + encodeURIComponent(item.slug);
-    const price = item.priceType === 'Paid' ? (Number(item.priceAmountVnd||0).toLocaleString('vi-VN')+' ₫') : (item.priceType === 'Freemium' ? 'Freemium' : 'Miễn phí');
+    const price = 'Miễn phí';
     return '<a class="app-card store-related-card" href="' + escapeHtml(href) + '"><div class="app-card-top"><img class="app-icon" src="' +
       escapeHtml(image) + '" alt="" loading="lazy"><div><h3>' + escapeHtml(item.title) + '</h3><div class="app-developer">' +
       escapeHtml(item.developer) + '</div></div></div><p class="app-description">' + escapeHtml(item.shortDescription) +
