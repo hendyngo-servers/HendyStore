@@ -182,11 +182,16 @@ try {
             && ($seedAccount['role'] ?? '') === 'admin'
             && $seedPassword !== ''
             && password_verify($seedPassword, (string) ($seedAccount['password_hash'] ?? ''));
+        $runtimeUserCount = (int) $db->query('SELECT COUNT(*) FROM users')->fetchColumn();
+        $runtimeProductCount = (int) $db->query('SELECT COUNT(*) FROM products')->fetchColumn();
         error_log('[Hendy Store health] driver=' . $driver
             . ' database=' . preg_replace('/[^a-zA-Z0-9_.-]/', '', $databaseName)
+            . ' app_env=' . (string) env_value('APP_ENV', 'development')
             . ' admin_env=' . ($seedConfigured ? 'configured' : 'missing')
             . ' admin_record=' . ($seedAccount && ($seedAccount['role'] ?? '') === 'admin' ? 'present' : 'missing_or_wrong_role')
-            . ' admin_password=' . ($seedPasswordMatches ? 'matches' : 'does_not_match'));
+            . ' admin_password=' . ($seedPasswordMatches ? 'matches' : 'does_not_match')
+            . ' users=' . $runtimeUserCount
+            . ' products=' . $runtimeProductCount);
 
         $storage = neon_storage_probe();
         $adminCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
