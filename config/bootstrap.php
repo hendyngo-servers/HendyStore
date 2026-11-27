@@ -233,6 +233,7 @@ function initialize_schema(PDO $db, string $driver): void
             version VARCHAR(40) NOT NULL DEFAULT '1.0.0',
             platform VARCHAR(180) NOT NULL DEFAULT 'Windows, Android, Web',
             price_type VARCHAR(30) NOT NULL DEFAULT 'Free',
+            price_amount_vnd BIGINT NOT NULL DEFAULT 0,
             icon VARCHAR(500) NOT NULL,
             cover VARCHAR(500) NOT NULL,
             screenshots_json TEXT NOT NULL DEFAULT '[]',
@@ -324,6 +325,7 @@ function initialize_schema(PDO $db, string $driver): void
             version VARCHAR(40) NOT NULL DEFAULT '1.0.0',
             platform VARCHAR(180) NOT NULL DEFAULT 'Windows, Android, Web',
             price_type VARCHAR(30) NOT NULL DEFAULT 'Free',
+            price_amount_vnd BIGINT NOT NULL DEFAULT 0,
             icon VARCHAR(500) NOT NULL,
             cover VARCHAR(500) NOT NULL,
             screenshots_json TEXT NOT NULL,
@@ -673,7 +675,7 @@ function rate_limit_or_fail(PDO $db,string $scope,int $maxHits,int $windowSecond
     if ($hits>$maxHits) { header('Retry-After: '.$windowSeconds); json_response(['ok'=>false,'error'=>'Bạn thao tác quá nhanh. Vui lòng thử lại sau.'],429); }
 }
 function valid_media_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\.(?:jpg|jpeg|png|webp)$/i',$token); }
-function valid_package_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\.(?:apk|apks|xapk|zip|7z|rar|exe|msi|dmg|pkg|deb|rpm|tar|gz|pdf|ipa|appx|msix|appimage)$/i',$token); }
+function valid_package_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\\.(?:apk|apks|xapk|zip|7z|rar|exe|msi|dmg|pkg|deb|rpm|tar|gz|pdf|appx|msix|appimage)$/i',$token); }
 function mb_substr_safe(string $value,int $max): string { return function_exists('mb_substr')?mb_substr($value,0,$max,'UTF-8'):substr($value,0,$max); }
 function validate_asset_reference(string $value): string {
     $value=trim($value); if ($value==='') return 'images/dummy.png';
@@ -702,8 +704,11 @@ function validate_product_input(array $input): array {
     } elseif ($download!=='' && !valid_package_token(substr($download,5))) json_response(['ok'=>false,'error'=>'Mã gói tải không hợp lệ.'],422);
     $price=(string)($input['priceType']??'Free');
     if (!in_array($price,['Free','Paid','Freemium'],true)) json_response(['ok'=>false,'error'=>'Loại giá không hợp lệ.'],422);
+    $priceAmount=max(0,(int)($input['priceAmountVnd']??0));
+    if ($priceAmount>100000000000) json_response(['ok'=>false,'error'=>'Giá sản phẩm vượt giới hạn.'],422);
     $status=in_array(($input['status']??'draft'),['published','draft'],true)?(string)$input['status']:'draft';
-    if ($price==='Paid' && $status==='published') json_response(['ok'=>false,'error'=>'Chưa tích hợp thanh toán; sản phẩm trả phí phải để bản nháp.'],422);
+    if ($price==='Paid' && $status==='published' && $priceAmount<1000) json_response(['ok'=>false,'error'=>'Sản phẩm Paid cần giá từ 1.000 VND.'],422);
+    if ($price!=='Paid' && $priceAmount!==0) json_response(['ok'=>false,'error'=>'Chỉ sản phẩm Paid mới nhập giá.'],422);
     if ($status==='published' && $download==='') json_response(['ok'=>false,'error'=>'Sản phẩm công khai cần URL HTTPS hoặc gói tải hợp lệ.'],422);
     if (str_starts_with($download,'file:') && !neon_storage_exists('packages/'.substr($download,5))) json_response(['ok'=>false,'error'=>'Không tìm thấy gói cài đặt trong Neon Object Storage. Hãy tải lại gói.'],422);
     $screens=$input['screenshots']??[]; if (!is_array($screens)) $screens=[];
@@ -712,7 +717,7 @@ function validate_product_input(array $input): array {
     return [
         ':slug'=>$slug,':title'=>$title,':developer'=>$developer,':category'=>$category,':short_description'=>$short,
         ':description'=>$description,':version'=>mb_substr_safe(trim((string)($input['version']??'1.0.0'))?:'1.0.0',40),
-        ':platform'=>mb_substr_safe(trim((string)($input['platform']??'Web'))?:'Web',180),':price_type'=>$price,
+        ':platform'=>mb_substr_safe(trim((string)($input['platform']??'Web'))?:'Web',180),':price_type'=>$price,':price_amount_vnd'=>$priceAmount,
         ':icon'=>validate_asset_reference((string)($input['icon']??'')),':cover'=>validate_asset_reference((string)($input['cover']??'')),
         ':screenshots_json'=>json_encode(array_values(array_unique($safe)),JSON_UNESCAPED_SLASHES),
         ':download_url'=>$download,':rating'=>min(5,max(0,(float)($input['rating']??0))),
@@ -722,7 +727,7 @@ function validate_product_input(array $input): array {
 function present_product(array $p,bool $full=false): array {
     $url=(string)($p['download_url']??''); $paid=($p['price_type']??'')==='Paid';
     $out=['id'=>(int)$p['id'],'slug'=>$p['slug'],'title'=>$p['title'],'developer'=>$p['developer'],'category'=>$p['category'],
-        'shortDescription'=>$p['short_description'],'version'=>$p['version'],'platform'=>$p['platform'],'priceType'=>$p['price_type'],
+        'shortDescription'=>$p['short_description'],'version'=>$p['version'],'platform'=>$p['platform'],'priceType'=>$p['price_type'],'priceAmountVnd'=>(int)($p['price_amount_vnd']??0),
         'icon'=>$p['icon'],'cover'=>$p['cover'],'downloads'=>(int)$p['downloads'],'rating'=>(float)$p['rating'],'featured'=>(bool)$p['featured']];
     if ($full) { $out['description']=$p['description']; $out['screenshots']=json_decode((string)$p['screenshots_json'],true)?:[];
         $out['downloadUrlConfigured']=$url!==''; $out['canDownload']=!$paid&&$url!==''; $out['status']=$p['status']; }
