@@ -41,7 +41,7 @@ const headersFor = (_origin: string | null): HeadersInit => ({
 async function sealCatalog() {
   return realtime.seal({
     query: rawSql(
-      'SELECT id, slug, title, developer, category, short_description AS "shortDescription", version, platform, price_type AS "priceType", icon, cover, downloads, rating, featured FROM products WHERE status = $1 ORDER BY featured DESC, downloads DESC, rating DESC LIMIT 100',
+      'SELECT id, slug, title, developer, category, short_description AS "shortDescription", version, platform, icon, cover, downloads, rating, featured FROM products WHERE status = $1 ORDER BY featured DESC, downloads DESC, rating DESC LIMIT 100',
       ["published"],
     ),
   });
