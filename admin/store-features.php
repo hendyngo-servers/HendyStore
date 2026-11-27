@@ -26,12 +26,12 @@ header('Cache-Control: no-store, private');
 <form id="versionForm">
 <label>Phiên bản<input class="admin-input" name="version" required maxlength="60" placeholder="2.0.0"></label>
 <div class="admin-actions">
-<label>Nền tảng<select class="admin-select" name="platform"><option value="universal">Mọi nền tảng</option><option value="windows">Windows</option><option value="macos">macOS</option><option value="android">Android</option><option value="ios">iOS</option><option value="linux">Linux</option><option value="web">Web</option></select></label>
+<label>Nền tảng<select class="admin-select" name="platform"><option value="universal">Mọi nền tảng</option><option value="windows">Windows</option><option value="macos">macOS</option><option value="android">Android</option><option value="linux">Linux</option><option value="web">Web</option></select></label>
 <label>Kiến trúc<select class="admin-select" name="architecture"><option value="universal">Universal</option><option value="x64">x64</option><option value="x86">x86</option><option value="arm64">ARM64</option><option value="armv7">ARMv7</option></select></label>
 </div>
 <label>Yêu cầu OS tối thiểu<input class="admin-input" name="min_os" placeholder="Windows 10 / Android 10 / macOS 13"></label>
 <label>Gói cài đặt URL HTTPS hoặc tải file<input class="admin-input" name="package_url" required placeholder="https://... hoặc tải file phía dưới"></label>
-<label>Tải gói cài đặt<input class="admin-input" id="versionPackage" type="file" accept=".apk,.apks,.xapk,.zip,.7z,.rar,.exe,.msi,.dmg,.pkg,.deb,.rpm,.tar,.gz,.pdf,.ipa,.appx,.msix,.appimage"></label>
+<label>Tải gói cài đặt<input class="admin-input" id="versionPackage" type="file" accept=".apk,.apks,.xapk,.zip,.7z,.rar,.exe,.msi,.dmg,.pkg,.deb,.rpm,.tar,.gz,.pdf,.appx,.msix,.appimage"></label>
 <label>Dung lượng (byte)<input class="admin-input" name="package_size_bytes" type="number" min="0" value="0"></label>
 <label>Nhật ký thay đổi<textarea class="admin-textarea" name="release_notes" maxlength="12000" placeholder="• Tính năng mới&#10;• Sửa lỗi&#10;• Cải thiện hiệu suất"></textarea></label>
 <label class="admin-check"><input type="checkbox" name="is_current" checked> Đặt làm bản mới nhất cho ứng dụng</label>
