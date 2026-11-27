@@ -21,7 +21,7 @@ Bộ mã nguồn website cửa hàng ứng dụng theo phong cách Microsoft Sto
 ## 2. Cấu trúc chính
 
 ```text
-web-hosting/
+Hendy-Store/
 ├── index.php                 # Trang chủ có metadata SEO
 ├── api.php                   # API và luồng tải tệp
 ├── sitemap.php               # Sitemap sinh theo sản phẩm đã công khai
@@ -39,14 +39,14 @@ web-hosting/
 ├── css/
 ├── js/
 ├── g/fonts.css              # Font stack cục bộ, không phụ thuộc CDN
-├── images/                   # Ảnh mặc định và ảnh legacy còn được tham chiếu
+├── images/dummy.png         # Ảnh mặc định
 ├── Dockerfile
 ├── docker-entrypoint.sh
 ├── render.yaml
 └── .env.example
 ```
 
-Các thư mục placeholder không dùng (`webcard/`, `bundles/`, `website/`, `g/static/`) và trang HTML trùng lặp đã được loại bỏ. Các ảnh kích thước legacy vẫn được giữ để không làm hỏng dữ liệu sản phẩm của những lần triển khai trước.
+Các thư mục placeholder không dùng (`webcard/`, `bundles/`, `website/`, `g/static/`), HTML trùng lặp và bộ ảnh thumbnail nhiều kích thước không được website tham chiếu đã được loại bỏ. Chỉ giữ ảnh mặc định `images/dummy.png`; nếu đang nâng cấp từ một database cũ có trỏ tới các thumbnail đã xóa, hãy thay biểu tượng/ảnh của những sản phẩm đó trong trang quản trị.
 
 ## 3. Yêu cầu môi trường
 
