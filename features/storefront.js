@@ -134,6 +134,27 @@ function renderDownload(versions) {
     }
   });
 }
+function renderRelated(products) {
+  const host = $('#storeRelated');
+  if (!host) return;
+  if (!products.length) {
+    host.innerHTML = '<p class="store-muted">Chưa có ứng dụng cùng danh mục để gợi ý.</p>';
+    return;
+  }
+  host.innerHTML = products.map(item => {
+    const icon = String(item.icon || '');
+    const image = icon.startsWith('media:')
+      ? '../api.php?action=media&file=' + encodeURIComponent(icon.slice(6))
+      : (/^https:\/\//i.test(icon) ? icon : '../' + icon.replace(/^\/+/, ''));
+    const href = '../apps/' + encodeURIComponent(item.slug);
+    const price = item.priceType === 'Paid' ? 'Trả phí' : (item.priceType === 'Freemium' ? 'Freemium' : 'Miễn phí');
+    return '<a class="app-card store-related-card" href="' + escapeHtml(href) + '"><div class="app-card-top"><img class="app-icon" src="' +
+      escapeHtml(image) + '" alt="" loading="lazy"><div><h3>' + escapeHtml(item.title) + '</h3><div class="app-developer">' +
+      escapeHtml(item.developer) + '</div></div></div><p class="app-description">' + escapeHtml(item.shortDescription) +
+      '</p><div class="app-meta"><span>★ ' + Number(item.rating || 0).toFixed(1) + ' · ' +
+      Number(item.downloads || 0).toLocaleString('vi-VN') + ' lượt tải</span><span class="app-price">' + price + '</span></div></a>';
+  }).join('');
+}
 function renderReviewStats(stats) {
   const host = $('#storeReviewStats');
   if (!host) return;
@@ -158,7 +179,8 @@ async function init() {
     const results = await Promise.all([
       request('me').catch(() => ({data:{user:null,csrfToken:''}})),
       request('store_product_extras'),
-      request('store_reviews')
+      request('store_reviews'),
+      request('product')
     ]);
     state.user = results[0].data?.user || null;
     state.csrf = results[0].data?.csrfToken || '';
@@ -169,6 +191,7 @@ async function init() {
     renderDownload(extras.versions || []);
     renderReviewStats(extras.reviewStats || {});
     renderReviews(results[2].data || []);
+    renderRelated(results[3].related || []);
     const form = $('#storeReviewForm');
     if (form) {
       if (!state.user) {
