@@ -83,6 +83,7 @@ function hendystore_feature_schema(PDO $db): void
     $db->exec("CREATE TABLE IF NOT EXISTS app_download_history (
         id $id,
         user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+        order_id BIGINT NULL,
         product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
         version_id BIGINT NULL,
         platform VARCHAR(40) NOT NULL DEFAULT 'unknown',
@@ -197,7 +198,7 @@ function hendystore_feature_download(PDO $db): never
     }
 
     $grantHash = hash('sha256', $grantToken);
-    $grantStmt = $db->prepare('SELECT token_hash,user_id,product_id,version_id,platform,expires_at,used_at FROM app_download_grants WHERE token_hash = :hash LIMIT 1');
+    $grantStmt = $db->prepare('SELECT token_hash,user_id,product_id,version_id,platform,order_id,expires_at,used_at FROM app_download_grants WHERE token_hash = :hash LIMIT 1');
     $grantStmt->execute([':hash' => $grantHash]);
     $grant = $grantStmt->fetch();
     if (!$grant || !empty($grant['used_at']) || (int)$grant['expires_at'] < time()) {
@@ -209,9 +210,11 @@ function hendystore_feature_download(PDO $db): never
     $productStmt = $db->prepare("SELECT * FROM products WHERE id = :id AND status = 'published' LIMIT 1");
     $productStmt->execute([':id' => (int)$grant['product_id']]);
     $product = $productStmt->fetch();
-    if (!$product || ($product['price_type'] ?? '') === 'Paid') {
-        http_response_code(404);
-        exit;
+    if (!$product) { http_response_code(404); exit; }
+    if (($product['price_type'] ?? '') === 'Paid') {
+        $owned=$db->prepare("SELECT id FROM app_orders WHERE id=:id AND user_id=:uid AND product_id=:pid AND status='paid' LIMIT 1");
+        $owned->execute([':id'=>(int)($grant['order_id']??0),':uid'=>(int)($grant['user_id']??0),':pid'=>(int)$product['id']]);
+        if (empty($grant['user_id']) || !$owned->fetchColumn()) { http_response_code(403); header('Cache-Control: no-store'); exit('Đơn hàng chưa thanh toán hoặc quyền tải đã bị thu hồi.'); }
     }
 
     $versionId = (int)($grant['version_id'] ?? 0);
@@ -248,7 +251,7 @@ function hendystore_feature_download(PDO $db): never
     rate_limit_or_fail($db, 'store-version-download', 80, 3600);
     $userId = $grant['user_id'] !== null ? (int)$grant['user_id'] : null;
     $platform = strtolower(trim((string)$grant['platform']));
-    if (!in_array($platform, ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+    if (!in_array($platform, ['windows', 'macos', 'android', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
     $ipSecret = (string)env_value('APP_KEY', hash('sha256', __FILE__));
     $agent = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500);
     $history = $db->prepare('INSERT INTO app_download_history(user_id,product_id,version_id,platform,package_name,ip_hash,user_agent,created_at) VALUES(:user_id,:product_id,:version_id,:platform,:package_name,:ip_hash,:user_agent,:created_at)');
@@ -494,9 +497,6 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             require_csrf();
             $input = request_data();
             $product = hendystore_feature_slug($db, trim((string)($input['slug'] ?? '')));
-            if (($product['price_type'] ?? '') === 'Paid') {
-                json_response(['ok' => false, 'error' => 'Sản phẩm trả phí chưa có thanh toán và cấp quyền tải.'], 403);
-            }
             $versionId = max(0, (int)($input['version_id'] ?? 0));
             $version = null;
             if ($versionId > 0) {
@@ -513,16 +513,25 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                 json_response(['ok' => false, 'error' => 'Gói cài đặt hiện không khả dụng trong Object Storage.'], 404);
             }
             $platform = strtolower(trim((string)($input['platform'] ?? 'unknown')));
-            if (!in_array($platform, ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+            if (!in_array($platform, ['windows', 'macos', 'android', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
             $user = current_user($db);
+            $orderId = null;
+            if (($product['price_type'] ?? '') === 'Paid') {
+                if (!$user) json_response(['ok'=>false,'error'=>'Đăng nhập để tải sản phẩm đã mua.'],401);
+                $owned=$db->prepare("SELECT id FROM app_orders WHERE user_id=:uid AND product_id=:pid AND status='paid' ORDER BY paid_at DESC,id DESC LIMIT 1");
+                $owned->execute([':uid'=>(int)$user['id'],':pid'=>(int)$product['id']]);
+                $orderId=$owned->fetchColumn();
+                if (!$orderId) json_response(['ok'=>false,'error'=>'Bạn chưa thanh toán sản phẩm này.'],403);
+            }
             $token = bin2hex(random_bytes(32));
-            $insert = $db->prepare('INSERT INTO app_download_grants(token_hash,user_id,product_id,version_id,platform,expires_at,created_at) VALUES(:token_hash,:user_id,:product_id,:version_id,:platform,:expires_at,:created_at)');
+            $insert = $db->prepare('INSERT INTO app_download_grants(token_hash,user_id,product_id,version_id,platform,order_id,expires_at,created_at) VALUES(:token_hash,:user_id,:product_id,:version_id,:platform,:order_id,:expires_at,:created_at)');
             $insert->execute([
                 ':token_hash' => hash('sha256', $token),
                 ':user_id' => $user ? (int)$user['id'] : null,
                 ':product_id' => (int)$product['id'],
                 ':version_id' => $versionId > 0 ? $versionId : null,
                 ':platform' => $platform,
+                ':order_id' => $orderId ? (int)$orderId : null,
                 ':expires_at' => time() + 600,
                 ':created_at' => date('Y-m-d H:i:s'),
             ]);
@@ -561,7 +570,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $minOs = trim((string)($input['min_os'] ?? ''));
             $packageUrl = trim((string)($input['package_url'] ?? ''));
             $size = max(0, (int)($input['package_size_bytes'] ?? 0));
-            $allowedPlatforms = ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'universal'];
+            $allowedPlatforms = ['windows', 'macos', 'android', 'linux', 'web', 'universal'];
             $allowedArch = ['x64', 'x86', 'arm64', 'armv7', 'universal'];
             if (!$product || $version === '' || strlen($version) > 60 || strlen($notes) > 12000 || strlen($minOs) > 120 || !in_array($platform, $allowedPlatforms, true) || !in_array($architecture, $allowedArch, true) || $packageUrl === '' || !hendystore_feature_safe_package_url($packageUrl)) {
                 json_response(['ok' => false, 'error' => 'Thông tin phiên bản hoặc gói cài đặt không hợp lệ.'], 422);
