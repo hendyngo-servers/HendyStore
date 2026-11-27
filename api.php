@@ -154,6 +154,12 @@ try {
     }
 
     $db = store_db();
+    require_once __DIR__ . '/features/payments.php';
+    if ($action === 'store_sepay_webhook') {
+        require_once __DIR__ . '/features/api.php';
+        hendystore_feature_schema($db);
+        hendystore_sepay_webhook($db);
+    }
     if ($action === 'health') {
         require_method('GET');
         try {
@@ -181,6 +187,8 @@ try {
     store_session();
 
     require_once __DIR__ . '/features/api.php';
+    hendystore_feature_schema($db);
+    if (hendystore_payment_api($db, $action, $method)) { exit; }
     if (hendystore_feature_api($db, $action, $method)) {
         exit;
     }
@@ -475,7 +483,7 @@ try {
                 $product = validate_product_input($input);
                 $now = date('Y-m-d H:i:s');
                 try {
-                    $stmt = $db->prepare('INSERT INTO products (slug,title,developer,category,short_description,description,version,platform,price_type,icon,cover,screenshots_json,download_url,downloads,rating,featured,status,created_at,updated_at) VALUES (:slug,:title,:developer,:category,:short_description,:description,:version,:platform,:price_type,:icon,:cover,:screenshots_json,:download_url,0,:rating,:featured,:status,:created_at,:updated_at)');
+                    $stmt = $db->prepare('INSERT INTO products (slug,title,developer,category,short_description,description,version,platform,price_type,price_amount_vnd,icon,cover,screenshots_json,download_url,downloads,rating,featured,status,created_at,updated_at) VALUES (:slug,:title,:developer,:category,:short_description,:description,:version,:platform,:price_type,:price_amount_vnd,:icon,:cover,:screenshots_json,:download_url,0,:rating,:featured,:status,:created_at,:updated_at)');
                     $stmt->execute($product + [':created_at' => $now, ':updated_at' => $now]);
                 } catch (PDOException $error) {
                     if ((string) $error->getCode() === '23000' || str_contains(strtolower($error->getMessage()), 'unique')) {
@@ -494,7 +502,7 @@ try {
                 $product[':id'] = $id;
                 $product[':updated_at'] = date('Y-m-d H:i:s');
                 try {
-                    $stmt = $db->prepare('UPDATE products SET slug=:slug,title=:title,developer=:developer,category=:category,short_description=:short_description,description=:description,version=:version,platform=:platform,price_type=:price_type,icon=:icon,cover=:cover,screenshots_json=:screenshots_json,download_url=:download_url,rating=:rating,featured=:featured,status=:status,updated_at=:updated_at WHERE id=:id');
+                    $stmt = $db->prepare('UPDATE products SET slug=:slug,title=:title,developer=:developer,category=:category,short_description=:short_description,description=:description,version=:version,platform=:platform,price_type=:price_type,price_amount_vnd=:price_amount_vnd,icon=:icon,cover=:cover,screenshots_json=:screenshots_json,download_url=:download_url,rating=:rating,featured=:featured,status=:status,updated_at=:updated_at WHERE id=:id');
                     $stmt->execute($product);
                 } catch (PDOException $error) {
                     if ((string) $error->getCode() === '23000' || str_contains(strtolower($error->getMessage()), 'unique')) {
