@@ -441,7 +441,10 @@ function neon_storage_probe(): bool
         neon_s3_client()->headBucket(['Bucket' => neon_storage_bucket()]);
         return true;
     } catch (Throwable $error) {
-        error_log('[Hendy Store storage] Object Storage probe failed: ' . get_class($error));
+        $details = $error instanceof \Aws\Exception\AwsException
+            ? ' code=' . (string) $error->getAwsErrorCode() . ' status=' . (string) $error->getStatusCode()
+            : '';
+        error_log('[Hendy Store storage] Object Storage probe failed: ' . get_class($error) . $details);
         return false;
     }
 }
