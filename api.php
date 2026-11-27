@@ -154,12 +154,7 @@ try {
     }
 
     $db = store_db();
-    require_once __DIR__ . '/features/payments.php';
-    if ($action === 'store_sepay_webhook') {
-        require_once __DIR__ . '/features/api.php';
-        hendystore_feature_schema($db);
-        hendystore_sepay_webhook($db);
-    }
+    // Free-only store: payment endpoints are not loaded.
     if ($action === 'health') {
         require_method('GET');
         try {
@@ -188,7 +183,6 @@ try {
 
     require_once __DIR__ . '/features/api.php';
     hendystore_feature_schema($db);
-    if (hendystore_payment_api($db, $action, $method)) { exit; }
     if (hendystore_feature_api($db, $action, $method)) {
         exit;
     }
@@ -234,7 +228,6 @@ try {
             $sort = (string) ($_GET['sort'] ?? 'popular');
             $rankPrice = match ($sort) {
                 'free-popular' => 'Free',
-                'paid-popular' => 'Paid',
                 default => null,
             };
             $page = min(100000, max(1, (int) ($_GET['page'] ?? 1)));
@@ -261,7 +254,7 @@ try {
                 'newest' => 'created_at DESC',
                 'rating' => 'rating DESC, downloads DESC',
                 'name' => 'title ASC',
-                'free-popular', 'paid-popular' => 'downloads DESC, rating DESC, title ASC',
+                'free-popular' => 'downloads DESC, rating DESC, title ASC',
                 default => 'featured DESC, downloads DESC, rating DESC',
             };
             $whereSql = implode(' AND ', $where);
