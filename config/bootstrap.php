@@ -702,13 +702,10 @@ function validate_product_input(array $input): array {
         $p=parse_url($download);
         if (!filter_var($download,FILTER_VALIDATE_URL)||strtolower((string)($p['scheme']??''))!=='https'||empty($p['host'])||isset($p['user'])||isset($p['pass'])) json_response(['ok'=>false,'error'=>'Liên kết tải ngoài phải là URL HTTPS hợp lệ.'],422);
     } elseif ($download!=='' && !valid_package_token(substr($download,5))) json_response(['ok'=>false,'error'=>'Mã gói tải không hợp lệ.'],422);
-    $price=(string)($input['priceType']??'Free');
-    if (!in_array($price,['Free','Paid','Freemium'],true)) json_response(['ok'=>false,'error'=>'Loại giá không hợp lệ.'],422);
-    $priceAmount=max(0,(int)($input['priceAmountVnd']??0));
-    if ($priceAmount>100000000000) json_response(['ok'=>false,'error'=>'Giá sản phẩm vượt giới hạn.'],422);
-    $status=in_array(($input['status']??'draft'),['published','draft'],true)?(string)$input['status']:'draft';
-    if ($price==='Paid' && $status==='published' && $priceAmount<1000) json_response(['ok'=>false,'error'=>'Sản phẩm Paid cần giá từ 1.000 VND.'],422);
-    if ($price!=='Paid' && $priceAmount!==0) json_response(['ok'=>false,'error'=>'Chỉ sản phẩm Paid mới nhập giá.'],422);
+    // Free-only catalog. Reject legacy Paid submissions.
+    if (isset($input['priceType']) && !in_array((string)$input['priceType'], ['Free','Freemium'], true)) json_response(['ok'=>false,'error'=>'Hendy Store hiện chỉ hỗ trợ sản phẩm miễn phí.'],422);
+    $price='Free';
+    $priceAmount=0;
     if ($status==='published' && $download==='') json_response(['ok'=>false,'error'=>'Sản phẩm công khai cần URL HTTPS hoặc gói tải hợp lệ.'],422);
     if (str_starts_with($download,'file:') && !neon_storage_exists('packages/'.substr($download,5))) json_response(['ok'=>false,'error'=>'Không tìm thấy gói cài đặt trong Neon Object Storage. Hãy tải lại gói.'],422);
     $screens=$input['screenshots']??[]; if (!is_array($screens)) $screens=[];
@@ -725,12 +722,12 @@ function validate_product_input(array $input): array {
     ];
 }
 function present_product(array $p,bool $full=false): array {
-    $url=(string)($p['download_url']??''); $paid=($p['price_type']??'')==='Paid';
+    $url=(string)($p['download_url']??'');
     $out=['id'=>(int)$p['id'],'slug'=>$p['slug'],'title'=>$p['title'],'developer'=>$p['developer'],'category'=>$p['category'],
-        'shortDescription'=>$p['short_description'],'version'=>$p['version'],'platform'=>$p['platform'],'priceType'=>$p['price_type'],'priceAmountVnd'=>(int)($p['price_amount_vnd']??0),
+        'shortDescription'=>$p['short_description'],'version'=>$p['version'],'platform'=>$p['platform'],'priceType'=>'Free','priceAmountVnd'=>0,
         'icon'=>$p['icon'],'cover'=>$p['cover'],'downloads'=>(int)$p['downloads'],'rating'=>(float)$p['rating'],'featured'=>(bool)$p['featured']];
     if ($full) { $out['description']=$p['description']; $out['screenshots']=json_decode((string)$p['screenshots_json'],true)?:[];
-        $out['downloadUrlConfigured']=$url!==''; $out['canDownload']=!$paid&&$url!==''; $out['status']=$p['status']; }
+        $out['downloadUrlConfigured']=$url!==''; $out['canDownload']=$url!==''; $out['status']=$p['status']; }
     return $out;
 }
 enforce_https_request();
