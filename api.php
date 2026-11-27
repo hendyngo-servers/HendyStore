@@ -226,10 +226,6 @@ try {
             $q = mb_substr_safe($q, 100);
             $category = mb_substr_safe(trim((string) ($_GET['category'] ?? '')), 100);
             $sort = (string) ($_GET['sort'] ?? 'popular');
-            $rankPrice = match ($sort) {
-                'free-popular' => 'Free',
-                default => null,
-            };
             $page = min(100000, max(1, (int) ($_GET['page'] ?? 1)));
             $limit = min(48, max(1, (int) ($_GET['limit'] ?? 24)));
             $where = ["status = 'published'"];
@@ -245,10 +241,6 @@ try {
             if ($category !== '' && $category !== 'Tất cả') {
                 $where[] = 'category = :category';
                 $params[':category'] = $category;
-            }
-            if ($rankPrice !== null) {
-                $where[] = 'price_type = :rank_price';
-                $params[':rank_price'] = $rankPrice;
             }
             $order = match ($sort) {
                 'newest' => 'created_at DESC',
