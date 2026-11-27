@@ -248,3 +248,6 @@ The module creates only new `app_*` tables and does not delete or rewrite existi
 **Distribution and payment limits:** an iOS IPA is not a one-click public install; use App Store, TestFlight or MDM distribution as appropriate. Paid checkout, payment verification, refunds and paid-download entitlements are not implemented by this module; Paid products remain locked by the existing application. A free download is added to the user's library only when the user is signed in at download time. Anonymous download history is aggregated without exposing raw IP addresses.
 
 Run CI on the `feature/store-ecosystem` branch before merging. Deploying the branch to Render/Neon is a separate operation and has not been performed by this repository change.
+
+
+Storefront ranking filters include the most popular free and paid products. Related-app suggestions are ranked from published apps in the same category. Paid purchase and entitlement workflows remain locked until a verified payment integration is added.

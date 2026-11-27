@@ -58,3 +58,7 @@
 .store-history-list span b,.store-history-list span small{display:block}
 .store-history-list small{font-size:9px;color:var(--muted)}
 @media(max-width:760px){.store-admin-grid{grid-template-columns:1fr}.store-library-item{flex-wrap:wrap}.store-library-item .button{margin-left:64px}.store-admin-review form{flex-direction:column}}
+
+.store-related-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.store-related-card{min-width:0}
+@media(max-width:600px){.store-related-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
