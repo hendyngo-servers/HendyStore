@@ -1,15 +1,20 @@
-# Secrets and local environment
+# Runtime secrets
 .env
 .env.*
 !.env.example
+.env.local
+.env.*.local
 
-# Private runtime storage (uploaded media/packages and local database)
+# Local dependencies and generated build artifacts
+node_modules/
+vendor/
+js/neon-client.bundle.js
+*.log
+.phpunit.cache/
+
+# Local data and editor/OS files
 storage/*
 !storage/.htaccess
 !storage/.gitkeep
-
-# Local tooling
 .DS_Store
 Thumbs.db
-*.log
-.phpunit.cache/

@@ -28,9 +28,7 @@ $icon=$product?detail_asset_url((string)$product['icon']):'../images/dummy.png';
 $download=(string)($product['download_url']??'');
 $downloadUrl='';
 if ($product && $download!=='') {
-    $downloadUrl=str_starts_with($download,'file:')
-        ? '../api.php?action=download_file&slug='.rawurlencode($slug)
-        : $download;
+    $downloadUrl='../api.php?action=download_redirect&slug='.rawurlencode($slug);
 }
 $canonical=$base.'/apps/'.rawurlencode($slug);
 $schema=$product?[
@@ -72,7 +70,7 @@ $schema=$product?[
 </div>
 <div class="detail-actions">
 <?php if($downloadUrl!=='' && $product['price_type']!=='Paid'): ?>
-<a class="button button-primary" href="<?= $escape($downloadUrl) ?>" <?= !str_starts_with($download,'file:')?'target="_blank" rel="noopener noreferrer"':'' ?>>Tải xuống <span>↓</span></a>
+<a class="button button-primary" href="<?= $escape($downloadUrl) ?>" rel="nofollow">Tải xuống <span>↓</span></a>
 <?php else: ?><button class="button button-soft" type="button" disabled>Chưa có liên kết tải</button><?php endif; ?>
 <small>Kiểm tra nguồn phát hành và tệp trước khi cài đặt.</small>
 </div>

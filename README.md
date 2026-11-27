@@ -1,208 +1,232 @@
-# Hendy Store — Public App Marketplace
+# Hendy Store — Render Free + Neon
 
-Bộ mã nguồn website cửa hàng ứng dụng theo phong cách Microsoft Store / Google Play. Nền tảng gồm giao diện responsive, danh mục ứng dụng, tìm kiếm, trang chi tiết sản phẩm, SEO, API PHP, khu vực quản trị và cơ chế lưu tệp riêng.
+Hendy Store là cửa hàng ứng dụng PHP/Apache với trang chủ responsive, danh mục, trang chi tiết SEO, bảng quản trị, upload gói cài đặt và luồng download. Bản triển khai này dùng Render Free cho Web Service và Neon cho dữ liệu, xác thực, lưu tệp, AI Gateway, Realtime và Functions.
 
-> **Trạng thái:** đã hoàn thiện mã nguồn và kiểm tra cú pháp PHP/JavaScript, cấu hình YAML và các thiết lập triển khai. Chưa thể xác nhận hoạt động end-to-end trên hosting thật từ môi trường đóng gói này. Trước khi mở cho công chúng, phải điền thông tin đơn vị vận hành, cấu hình bí mật, triển khai database/storage bền vững và tự kiểm thử theo checklist bên dưới.
+> **Trạng thái mã nguồn:** đã chuẩn bị cấu hình Render Free, Docker multi-stage, Neon infrastructure file, PostgreSQL schema, API lưu trữ S3 và build bundle Auth/Realtime. Chưa thể chạy Neon CLI hoặc triển khai lên tài khoản từ môi trường hiện tại vì DNS tới npm registry trả về EAI_AGAIN. Chưa có kết quả Neon deploy, Docker build trên Render hoặc end-to-end runtime; không coi hệ thống đã hoạt động trên production cho tới khi các bước kiểm chứng ở cuối hoàn tất.
 
-## 1. Tính năng
+## 1. Kiến trúc
 
-- Trang chủ responsive, danh mục, tìm kiếm, sắp xếp, phân trang và ứng dụng nổi bật.
-- Trang sản phẩm có URL thân thiện `/apps/ten-ung-dung`, Open Graph, canonical và JSON-LD.
-- Sitemap XML tự sinh từ các sản phẩm đang công khai; robots.txt tự lấy domain từ `APP_URL`.
-- API PHP dùng PDO, hỗ trợ SQLite và MySQL, truy vấn tham số hóa.
-- Quản trị viên có thể tạo, sửa, ẩn, công khai và xóa sản phẩm; ảnh chụp màn hình đã khai báo được giữ nguyên khi chỉnh sửa sản phẩm.
-- Tải ảnh JPG/PNG/WEBP; ảnh lưu ở storage riêng và được phân phối qua API.
-- Tải gói APK/APKS/XAPK/ZIP/7Z/RAR/EXE/MSI/DMG/PKG/DEB/RPM/TAR/GZ/PDF tối đa 200 MB; gói nằm ngoài webroot, được tải qua API và hỗ trợ streaming cho tệp lớn.
-- Download counter, giới hạn tốc độ đăng nhập/đăng ký/tải xuống, session cookie bảo vệ, CSRF, CSP và các HTTP security headers.
-- Đăng ký tài khoản khách hàng tắt mặc định. Admin vẫn đăng nhập bình thường.
-- GitHub Actions kiểm tra cú pháp PHP/JavaScript và chạy smoke test SQLite (schema, bootstrap admin, password hash và storage).
-- Dữ liệu mẫu giả lập không được tự tạo ở bản mới. Bản nâng cấp có migration đưa các mẫu cũ không có liên kết tải về bản nháp và xóa số liệu giả.
+| Thành phần | Vai trò |
+|---|---|
+| Render Free Web Service | PHP 8.3 + Apache, giao diện website, API và quản trị |
+| Neon PostgreSQL | Sản phẩm, tài khoản liên kết, lượt tải, giới hạn truy cập và PHP sessions |
+| Neon Managed Auth | Email/password và bearer JWT cho phiên người dùng |
+| Neon Object Storage | Ảnh, APK, ZIP, EXE và gói ứng dụng; bucket private |
+| Neon AI Gateway | Tạo nháp mô tả ứng dụng từ thông tin quản trị nhập |
+| Neon Realtime | Live SQL query của danh mục public |
+| Neon Function storeapi | Health check các dịch vụ Neon và seal truy vấn realtime |
 
-## 2. Cấu trúc chính
+**Không dùng persistent disk trên Render Free.** Dữ liệu không được ghi vào filesystem của Web Service để lưu lâu dài. PHP sessions được lưu trong bảng Postgres; upload ảnh/gói nằm trong Neon Object Storage; database nằm trên Neon. Render Free có thể spin down khi không có traffic và filesystem local sẽ mất dữ liệu khi service restart, redeploy hoặc spin down. Xem giới hạn hiện hành tại https://render.com/docs/free.
 
-```text
+## 2. Các tính năng trong mã nguồn
+
+- Trang chủ, tìm kiếm, lọc danh mục, sắp xếp, phân trang, nổi bật, trang chi tiết và metadata SEO.
+- Quản trị tạo/sửa/xóa/ẩn/công khai ứng dụng.
+- Upload JPG/PNG/WEBP tối đa 5 MB.
+- Upload APK/APKS/XAPK/ZIP/7Z/RAR/EXE/MSI/DMG/PKG/DEB/RPM/TAR/GZ/PDF tối đa 200 MB, theo giới hạn MAX_UPLOAD_BYTES.
+- File được kiểm tra phần mở rộng, MIME, kích thước, ảnh và tên token ngẫu nhiên; lưu vào bucket private. API stream ảnh/gói qua server, không đưa credential S3 ra browser.
+- Download qua /api.php?action=download_redirect&slug=...; chỉ cho ứng dụng đang public và không phải sản phẩm Paid. Link ngoài chỉ nhận HTTPS. Download package nội bộ được stream từ Object Storage và tăng lượt tải.
+- CSRF, session cookie HttpOnly/SameSite/Secure, rate limit, truy vấn PDO tham số hóa và HTTP security headers.
+- Neon Auth JWT được kiểm tra bằng JWKS server-side; hồ sơ Neon Auth liên kết vào bảng users theo subject/email. Trang quản trị vẫn hỗ trợ tài khoản admin do ADMIN_EMAIL/ADMIN_PASSWORD tạo.
+- PHP sessions dùng Postgres nên tồn tại qua các lần Render spin down/redeploy.
+- Nút AI viết mô tả trong admin gọi Neon AI Gateway. Người quản trị phải đọc và xác minh nội dung AI trước khi lưu.
+- Neon Realtime phát danh mục public; REST API vẫn là fallback khi Realtime mất kết nối.
+- Health endpoint của PHP kiểm tra kết nối Postgres, Object Storage và admin. Neon Function /health kiểm tra Postgres, Object Storage, Auth, AI Gateway và Realtime.
+
+## 3. Cấu trúc bổ sung
+
+~~~text
 Hendy-Store/
-├── index.php                 # Trang chủ có metadata SEO
-├── api.php                   # API và luồng tải tệp
-├── sitemap.php               # Sitemap sinh theo sản phẩm đã công khai
-├── robots.php                # Robots theo APP_URL
-├── subpage/index.php         # Trang chi tiết SSR/SEO
-├── legal-notice/index.html   # Thông tin pháp lý (cần điền thông tin thật)
-├── privacy/index.html        # Chính sách quyền riêng tư
-├── terms-of-use/index.html   # Điều khoản sử dụng
-├── developer-policy/index.html
-├── admin/index.php           # Bảng quản trị
-├── admin/admin.js
-├── config/bootstrap.php      # Env, session, PDO, validation, rate limits
-├── database/schema.mysql.sql
-├── storage/                  # Storage riêng, bị chặn truy cập web
-├── css/
-├── js/
-├── g/fonts.css              # Font stack cục bộ, không phụ thuộc CDN
-├── images/dummy.png         # Ảnh mặc định
+├── api.php
+├── config/bootstrap.php
+├── database/schema.postgres.sql
+├── neon.ts
+├── neon/functions/storeapi.ts
+├── src/neon-browser.js
+├── js/neon-client.bundle.js       # npm run build tạo ra
+├── scripts/build.mjs
+├── scripts/smoke.mjs
+├── package.json
+├── composer.json
 ├── Dockerfile
 ├── docker-entrypoint.sh
-├── render.yaml
+├── render.yaml                    # plan: free, không gắn disk
 └── .env.example
-```
+~~~
 
-Các thư mục placeholder không dùng (`webcard/`, `bundles/`, `website/`, `g/static/`), HTML trùng lặp và bộ ảnh thumbnail nhiều kích thước không được website tham chiếu đã được loại bỏ. Chỉ giữ ảnh mặc định `images/dummy.png`; nếu đang nâng cấp từ một database cũ có trỏ tới các thumbnail đã xóa, hãy thay biểu tượng/ảnh của những sản phẩm đó trong trang quản trị.
+database/schema.mysql.sql được giữ lại để tham khảo/khả năng tương thích bản cũ. Production target trong Blueprint này là Neon PostgreSQL.
 
-## 3. Yêu cầu môi trường
+## 4. Thiết lập Neon trên máy của anh
 
-- PHP 8.2 trở lên.
-- PHP extensions: `PDO`, `pdo_sqlite` hoặc `pdo_mysql` tùy database, `fileinfo`, `mbstring` (mã có fallback một phần nếu thiếu mbstring). Dockerfile cài cả SQLite/MySQL PDO và OPcache.
-- Apache 2.4 với `mod_rewrite`, `mod_headers`, `AllowOverride All`; hoặc cấu hình Nginx tương đương (mẫu bên dưới).
-- HTTPS bắt buộc khi vận hành công khai.
-- Đủ dung lượng đĩa, backup database và thư mục storage định kỳ.
+Chạy trong thư mục gốc của repository, sau khi đã cài Node.js 22 trở lên, npm và Composer 2.
 
-## 4. Cài trên hosting PHP/Apache
+### 4.1. Tạo file môi trường cục bộ
 
-1. Tải và giải nén toàn bộ thư mục lên Document Root của domain.
-2. Sao chép `.env.example` thành `.env` ở thư mục gốc. Không đưa `.env` lên Git.
-3. Tạo secret:
+PowerShell:
 
-   ```bash
-   openssl rand -hex 32
-   ```
+~~~powershell
+Copy-Item .env.example .env.local
+~~~
 
-   Dán kết quả vào `APP_KEY`.
-4. Điền tối thiểu:
+Điền trước APP_URL bằng đúng URL HTTPS Render sẽ cấp. Nếu tên dịch vụ là hendy-store, URL thường có dạng https://hendy-store.onrender.com; dùng domain thực tế do Render hiển thị, không tự đoán URL nếu Render cấp hậu tố khác.
 
-   ```dotenv
-   APP_ENV=production
-   STORE_NAME="Hendy Store"
-   APP_URL=https://ten-mien-cua-ban.vn
-   APP_KEY=chuoi-bi-mat-ngau-nhien-64-ky-tu-hex
-   ADMIN_EMAIL=email-quan-tri-cua-ban
-   ADMIN_PASSWORD=mat-khau-rieng-toi-thieu-12-ky-tu
-   ALLOW_REGISTRATION=false
-   FORCE_SECURE_COOKIES=true
-   FORCE_HTTPS=true
-   TRUST_PROXY_HEADERS=false
-   ```
+Tạo APP_KEY:
 
-5. Cấu hình SQLite mặc định hoặc MySQL. Ví dụ MySQL:
+~~~powershell
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+~~~
 
-   ```dotenv
-   DB_DSN="mysql:host=127.0.0.1;dbname=hendy_store;charset=utf8mb4"
-   DB_USER=ten_database_user
-   DB_PASSWORD=mat_khau_database
-   STORAGE_PATH=/duong-dan-rieng/khong-public/hendy-store
-   ```
+Điền ADMIN_EMAIL, ADMIN_PASSWORD riêng. Mật khẩu quản trị mới tối thiểu 12 ký tự và tối đa 72 byte (bcrypt). Không dùng lại mật khẩu của email, Neon hoặc tài khoản GitHub.
 
-   Với SQLite, có thể đặt `SQLITE_PATH=/duong-dan-rieng/hendy-store.sqlite`. Nếu để trống, ứng dụng dùng `storage/hendy-store.sqlite`.
+### 4.2. Cài Neon CLI và liên kết project production
 
-6. Bảo đảm `STORAGE_PATH` hoặc thư mục `storage/` ghi được bởi user chạy PHP. Không đặt storage trong thư mục public nếu máy chủ không chặn truy cập trực tiếp.
-7. Mở `https://ten-mien-cua-ban.vn/api.php?action=health`. Kết quả cần là JSON `ok: true`, `database: connected`, `storage: writable` và có ít nhất một quản trị viên.
-8. Đăng nhập tại `https://ten-mien-cua-ban.vn/admin/`, tạo ứng dụng thật, tải ảnh và gói cài đặt, sau đó công khai. Mật khẩu được kiểm tra tối thiểu 12 ký tự Unicode và tối đa 72 byte (giới hạn an toàn cho thuật toán băm mặc định). Đổi mật khẩu admin bằng CLI: `php bin/reset-admin-password.php admin@ten-mien-cua-ban.vn` (nhập mật khẩu mới tại prompt; chạy trên máy/SSH có quyền truy cập database và `.env`).
+~~~powershell
+npm i -g neon@latest
+~~~
 
-Quản trị viên đầu tiên được tạo tự động khi API/health chạy lần đầu với `ADMIN_EMAIL` và `ADMIN_PASSWORD` hợp lệ. Không dùng mật khẩu mẫu, không gửi bí mật qua chat, không commit `.env`.
+Nếu lệnh cài global thất bại, dùng CLI qua npx:
 
-### Nếu dùng Nginx
+~~~powershell
+npx neon@latest --version
+~~~
 
-`.htaccess` không có tác dụng trên Nginx. Thiết lập tương đương trong server block và kiểm tra PHP-FPM. Ví dụ các quy tắc cần có:
+Nếu lệnh Neon mở trình duyệt để đăng nhập, hoàn tất đăng nhập trong browser trước khi tiếp tục. Nếu cửa sổ đăng nhập timeout hoặc không hoàn tất, chạy neon login rồi thử lại.
 
-```nginx
-index index.php index.html;
-client_max_body_size 212m;
+Liên kết repository này với đúng project và branch anh đã cung cấp:
 
-location ~ ^/apps/([a-z0-9-]+)/?$ {
-    rewrite ^/apps/([a-z0-9-]+)/?$ /subpage/index.php?slug=$1 last;
-}
-location = /sitemap.xml { rewrite ^ /sitemap.php last; }
-location = /robots.txt  { rewrite ^ /robots.php last; }
+~~~powershell
+neon init -y --org-id org-silent-waterfall-43882566 --project-id sparkling-grass-08962862 --branch production --services postgres,auth,ai-gateway,object-storage,functions,realtime
+~~~
 
-location ~ ^/(config|database|storage|bin)/ { deny all; }
-location ~ /\. { deny all; }
-location ~ \.php$ {
-    try_files $uri =404;
-    include fastcgi_params;
-    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    fastcgi_pass unix:/run/php/php-fpm.sock;
-}
-```
+### 4.3. Provision dịch vụ Neon
 
-Đường dẫn socket PHP-FPM tùy nhà cung cấp hosting. Đảm bảo Nginx không phục vụ nội dung trong `storage/`, `config/`, `database/`, `bin/` hay `.env` dưới dạng file tĩnh. Cấu hình TLS/redirect HTTPS ở hosting hoặc reverse proxy; không phục vụ trang quản trị hoặc thông tin đăng nhập qua HTTP.
+~~~powershell
+neon deploy
+~~~
 
-## 5. Triển khai trên Render
+Neon CLI đọc neon.ts, áp dụng cấu hình lên branch production và kéo các biến dịch vụ vào .env.local (hoặc .env nếu anh đang dùng tệp đó). Các dịch vụ được khai báo gồm:
 
-Repository đã có `render.yaml` và Dockerfile. Blueprint tạo một Docker Web Service, một persistent disk 2 GB tại `/var/data`, cấu hình SQLite tại `/var/data/hendy-store/hendy-store.sqlite`, bật HTTPS cookie và tắt đăng ký công khai.
+Nếu muốn tạo schema PostgreSQL trước khi chạy Web Service, có thể dùng psql (lệnh không in connection string ra màn hình):
 
-1. Tạo repository GitHub mới tên `Hendy-Store` (khuyến nghị để trống, không tự thêm README/LICENSE/.gitignore), sau đó đẩy mã nguồn:
+~~~powershell
+$dbLine = Get-Content .env.local | Where-Object { $_ -match '^DATABASE_URL=' } | Select-Object -First 1
+if (-not $dbLine) { throw "DATABASE_URL not found in .env.local" }
+$env:DATABASE_URL = $dbLine.Substring("DATABASE_URL=".Length).Trim().Trim('"').Trim("'")
+psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f database/schema.postgres.sql
+Remove-Item Env:DATABASE_URL
+~~~
 
-   ```bash
-   git init -b main
-   git add .
-   git commit -m "Initial Hendy Store release"
-   git remote add origin https://github.com/ngogiaidy56-eng/Hendy-Store.git
-   git push -u origin main
-   ```
+Ứng dụng cũng tự tạo/cập nhật schema theo cách idempotent khi API/health chạy lần đầu; không cần tạo lại bảng nếu đã tồn tại.
 
-   Tệp `.gitignore` đã chặn `.env`, database SQLite và toàn bộ nội dung upload trong `storage/`; chỉ giữ `storage/.htaccess` cần thiết.
-2. Tạo Blueprint mới trên Render và chọn repository có `render.yaml`.
-3. Khi Render yêu cầu giá trị cho `APP_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, hãy nhập domain HTTPS thật (hoặc domain `onrender.com` được cấp) và thông tin quản trị thực tế. `APP_URL` là bắt buộc trong production để tránh Host-header poisoning/canonical giả; mật khẩu mới phải có ít nhất 12 ký tự và tối đa 72 byte.
-4. Giữ `APP_KEY` do Render tự sinh. Không xóa persistent disk sau khi cửa hàng có dữ liệu.
-5. Deploy, mở Logs và đợi health check `/api.php?action=health` thành công.
-6. Gắn custom domain trong Render, cấu hình DNS theo thông tin Render cung cấp, cập nhật `APP_URL` thành domain HTTPS thật rồi kiểm thử lại canonical/robots/sitemap.
-7. Tạo backup định kỳ cho persistent disk. Render disk làm dữ liệu filesystem tồn tại qua deploy/restart; không nên dùng cấu hình một SQLite disk cho nhiều instance/scale ngang. Khi cần nhiều instance, chuyển database sang dịch vụ database dùng chung và media/package sang object storage.
+- Postgres — URL pooled DATABASE_URL.
+- Managed Auth — NEON_AUTH_BASE_URL, NEON_AUTH_JWKS_URL.
+- Object Storage — AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3, AWS_REGION.
+- AI Gateway — NEON_AI_GATEWAY_BASE_URL, NEON_AI_GATEWAY_TOKEN.
+- Realtime — NEON_REALTIME_URL, NEON_REALTIME_SECRET.
+- Functions — Function storeapi và biến môi trường runtime tương ứng.
 
-Docker image lắng nghe cổng `PORT` (Render mặc định 10000). Không đổi `PORT` nếu chưa đổi cấu hình dịch vụ tương ứng. Render edge tự chuyển HTTP sang HTTPS; với hosting khác, PHP tự chuyển các trang động sang HTTPS. Nếu chạy sau proxy, `TRUST_PROXY_HEADERS=true` chỉ nên bật khi proxy do anh kiểm soát. Health endpoint luôn chạy kiểm tra database/storage thật thay vì chỉ trả redirect.
+Không commit .env, .env.local hoặc bất kỳ file nào chứa credential. .gitignore và .dockerignore đã loại chúng khỏi Git/Docker build.
 
+### 4.4. Lấy URL Neon Function
 
-## 6. Quản trị sản phẩm
+Function có slug storeapi. Sau khi deploy, lấy HTTPS invocation URL từ kết quả deploy/Neon Console (Functions của branch production) và dùng URL đó cho biến Render:
 
-Truy cập `/admin/` và đăng nhập bằng tài khoản được tạo từ biến môi trường.
+~~~text
+NEON_STORE_FUNCTION_URL=https://<function-invocation-url>
+~~~
 
-- **Biểu tượng/ảnh bìa:** JPG, PNG hoặc WEBP, tối đa 5 MB mỗi ảnh.
-- **Gói cài đặt:** một trong các định dạng được liệt kê, tối đa 200 MB.
-- **Liên kết ngoài:** chỉ chấp nhận HTTPS.
-- **Slug:** chữ thường, số và dấu gạch ngang; phải duy nhất.
-- **Công khai:** bắt buộc có HTTPS download URL hoặc gói tải lên hợp lệ.
-- **Điểm đánh giá:** mặc định 0 (chưa đánh giá). Chỉ điền điểm khi có dữ liệu xác thực; bản này chưa có hệ thống đánh giá/review của người dùng.
-- **Paid:** checkout, thanh toán và cấp quyền tải chưa được tích hợp. Sản phẩm Paid chỉ được lưu ở trạng thái bản nháp; không dùng bản này để thu tiền.
+Không thêm path /health vào biến này. Code tự gọi /health hoặc /catalog-live. Không dùng URL nội bộ PostgreSQL làm Function URL.
 
-Quản trị viên phải xác minh quyền phát hành/phân phối, quét malware, kiểm tra chữ ký số và thử tải/cài trên thiết bị sạch trước khi công khai. Mã nguồn không bao gồm antivirus sandbox hoặc chứng nhận an toàn tự động.
+### 4.5. Cấu hình domain tin cậy trong Neon Auth
 
-## 7. API
+Thêm URL HTTPS Render thực tế làm trusted/allowed origin trong cấu hình Neon Auth của branch. Đảm bảo Auth được phép phục vụ email/password sign-in trên domain đó. NEON_AUTH_PUBLIC_SIGNUP=false mặc định chỉ ẩn nút đăng ký trên UI Hendy Store; muốn khóa đăng ký ở cấp dịch vụ thì cần tắt public sign-up trong cấu hình Managed Auth của Neon, không chỉ dựa vào biến UI.
 
-| Endpoint | Mục đích |
-|---|---|
-| `GET /api.php?action=health` | Health check, database/storage/admin readiness |
-| `GET /api.php?action=bootstrap` | Cấu hình cửa hàng, danh mục, nổi bật, CSRF/session |
-| `GET /api.php?action=products&q=&category=&sort=&page=` | Tìm kiếm và phân trang |
-| `GET /api.php?action=product&slug=` | Chi tiết sản phẩm và sản phẩm liên quan |
-| `GET /api.php?action=media&file=` | Phục vụ ảnh đã upload theo mã tệp an toàn |
-| `POST /api.php?action=login` | Đăng nhập, cần `X-CSRF-Token` |
-| `POST /api.php?action=logout` | Đăng xuất, cần `X-CSRF-Token` |
-| `POST /api.php?action=download` | Mở liên kết tải hoặc tạo URL tải package, cần CSRF |
-| `GET /api.php?action=download_file&slug=` | Tải gói riêng từ storage |
-| `GET/POST/PUT/DELETE /api.php?action=admin_products` | CRUD sản phẩm, yêu cầu admin; thao tác ghi cần CSRF |
-| `POST /api.php?action=admin_upload` | Upload ảnh/package, yêu cầu admin và CSRF |
+Realtime được cấu hình preview.realtime.allowedOrigins lấy từ APP_URL trong môi trường khi chạy neon deploy. Nếu thay domain sau này, cập nhật APP_URL rồi chạy lại neon deploy để cập nhật origin của Realtime.
 
-## 8. Những việc bắt buộc trước khi bật public traffic
+## 5. Build và kiểm thử trước khi deploy
 
-- Điền tên pháp lý, địa chỉ liên hệ và email hỗ trợ/tiếp nhận khiếu nại ở `legal-notice/index.html`; thay toàn bộ placeholder `[BỔ SUNG...]` bằng dữ liệu thật. Không mở public traffic khi trang pháp lý còn placeholder.
-- Rà soát nghĩa vụ pháp lý hiện hành đối với mô hình website và phạm vi sản phẩm tại quốc gia hoạt động. Các trang điều khoản/chính sách trong mã nguồn là bản khởi tạo, không phải tư vấn pháp lý hay xác nhận đã hoàn tất thủ tục.
-- Chỉ công khai ứng dụng đã xác minh quyền phân phối và kiểm tra gói cài đặt; không để sản phẩm demo/placeholder ngoài cửa hàng.
-- Cấu hình HTTPS, `APP_URL`, `APP_KEY`, admin secret, persistent storage và backup.
-- Kiểm tra URL tải, ảnh, mobile, 404, sitemap, robots, trang quyền riêng tư và quy trình gỡ nội dung.
-- Giữ `ALLOW_REGISTRATION=false` vì chưa có xác minh email, khôi phục mật khẩu và quy trình chống tài khoản giả. Không bật trước khi bổ sung các luồng này.
-- Không bật bán ứng dụng trả phí trước khi có cổng thanh toán, đơn hàng, biên nhận, hoàn tiền, cấp quyền và đối soát.
-
-## 9. Kiểm tra mã nguồn
-
-Các kiểm tra đã chạy trong môi trường đóng gói:
-
-```bash
-php -l config/bootstrap.php
+~~~powershell
+npm install
+npm run build
+npm test
+composer validate --no-check-publish
+composer install
 php -l api.php
-php -l index.php
+php -l config/bootstrap.php
 php -l subpage/index.php
-php -l sitemap.php
-php -l robots.php
-node --check js/custom.261126163157.js
-node --check admin/admin.js
-```
+php tests/smoke.php
+~~~
 
-Môi trường đóng gói không có PDO SQLite/MySQL và không có Docker daemon, vì vậy chưa thể chạy kiểm thử end-to-end database/upload/download hoặc build container tại đây. Sau khi deploy, thực hiện checklist ở mục 8 và xác nhận trực tiếp qua Render Logs/health endpoint trước khi công bố URL.
+npm run build tạo js/neon-client.bundle.js từ Neon Auth/Realtime browser SDK. Docker multi-stage chạy lại build này trong lúc build image; không yêu cầu commit bundle đã sinh.
+
+Smoke test PHP dùng SQLite tạm thời chỉ để xác nhận bootstrap schema/admin/session trong CI. Nó không thay cho kiểm thử PostgreSQL thật.
+
+## 6. Triển khai Render Free
+
+1. Mở Render Dashboard.
+2. Chọn New → Blueprint và kết nối repository ngogiaidy56-eng/Hendy-Store.
+3. Render đọc render.yaml, tạo một Docker Web Service gói Free. Blueprint không khai báo persistent disk.
+4. Khi Render hỏi các giá trị sync:false, điền:
+   - APP_URL, ADMIN_EMAIL, ADMIN_PASSWORD
+   - DATABASE_URL (dùng pooled URL từ Neon, có SSL)
+   - NEON_AUTH_BASE_URL, NEON_AUTH_JWKS_URL
+   - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3
+   - NEON_AI_GATEWAY_BASE_URL, NEON_AI_GATEWAY_TOKEN
+   - NEON_REALTIME_URL, NEON_REALTIME_SECRET
+   - NEON_STORE_FUNCTION_URL (HTTPS invocation URL của Function)
+5. Giữ APP_KEY do Render sinh tự động. Không dán secret vào source code hoặc commit.
+6. Deploy Docker service. Chờ build hoàn tất và health check thành công.
+7. Mở https://<render-domain>/api.php?action=health. Response cần có ok:true, database:postgresql, storage:neon-object-storage, và admin count lớn hơn 0.
+
+Render Free có cold start sau thời gian idle, vì vậy lần truy cập đầu sau khi ngủ có thể chậm. Gói Free không phù hợp nếu cần availability/SLA liên tục; có thể chuyển sang gói trả phí sau này mà không cần thay đổi nơi lưu database/file.
+
+## 7. Kiểm chứng end-to-end sau khi Neon và Render đã deploy
+
+### PHP Web Service
+
+~~~powershell
+Invoke-RestMethod "https://<render-domain>/api.php?action=health"
+~~~
+
+### Neon Function
+
+~~~powershell
+Invoke-RestMethod "https://<function-invocation-url>/health"
+~~~
+
+checks cần báo true cho postgres, objectStorage, auth, aiGateway, realtime. Nếu một dịch vụ thất bại, xem Functions logs/Neon Console và Render logs; không đưa nội dung biến bí mật vào issue hoặc chat.
+
+### Object Storage và download
+
+1. Đăng nhập /admin/.
+2. Tải một ảnh test và một file ZIP nhỏ.
+3. Lưu sản phẩm ở trạng thái draft, sau đó thêm HTTPS/package URL và công khai.
+4. Mở trang chi tiết, bấm Tải xuống.
+5. Xác nhận file tải đúng checksum, lượt tải tăng, ảnh vẫn hiện sau khi Render restart/redeploy.
+
+### Auth
+
+1. Thêm Render URL vào trusted origins của Neon Auth.
+2. Bật đăng ký ở Neon Auth chỉ khi đã sẵn sàng mở tài khoản; nếu bật UI sign-up, đặt NEON_AUTH_PUBLIC_SIGNUP=true trên Render.
+3. Đăng nhập bằng Neon Auth, tải lại trang và gọi bootstrap/products. Backend cần xác thực JWT qua JWKS và map đúng hồ sơ.
+4. Kiểm tra admin chỉ đăng nhập bằng email/mật khẩu quản trị đã cấu hình; không tự gán role admin từ client token.
+
+### AI Gateway và Realtime
+
+1. Mở admin, nhập tên, nhà phát triển, danh mục và mô tả ngắn, sau đó bấm AI viết mô tả. Đọc lại kết quả trước khi lưu.
+2. Mở hai browser ở trang cửa hàng, thêm/cập nhật một sản phẩm từ admin; catalog sẽ nhận live update qua Realtime. REST API vẫn là fallback khi Realtime disconnects.
+
+## 8. Giới hạn chi phí và bảo mật cần lưu ý
+
+- Render Free và Neon Free là hai hạn mức riêng. Neon Free hiện công bố 1 GB Postgres/project, 5 GB Object Storage, 100 CU-hours/project/tháng và quota riêng cho Auth/Functions. Theo dõi quota trước khi tải nhiều file dung lượng lớn.
+- Neon AI Gateway được tính usage theo model/token; có thể yêu cầu nạp credits trước khi gọi model. Nút AI không phải tính năng miễn phí vô hạn.
+- Realtime hiện là tính năng public preview/beta; kiểm tra giới hạn và trạng thái mới nhất trong Neon Console trước khi phụ thuộc vào nó cho quy trình quan trọng.
+- Render Free filesystem là ephemeral. Không thêm database SQLite hoặc upload file local làm production persistence; không gắn disk vào Free plan.
+- Mã nguồn chưa có checkout/thanh toán, refund, entitlement hay cấp quyền tải Paid. Sản phẩm Paid không được công khai/tải trong bản này.
+- Phải thay placeholder ở legal-notice/index.html bằng tên pháp lý, địa chỉ liên hệ và email hỗ trợ thực tế trước khi mở website cho công chúng.
+- Kiểm tra quyền phân phối và quét malware cho từng package trước khi công khai. Mã nguồn không tuyên bố phần mềm được chứng nhận an toàn.
+- Đổi mật khẩu Neon/Postgres nếu credential đã được chia sẻ bên ngoài hệ thống quản lý bí mật. Dùng Render Environment Variables cho runtime, không lưu .env.local vào GitHub.
+
+## 9. Trạng thái xác minh và những phần chưa thể xác nhận
+
+Các tệp mã nguồn/config đã được chuẩn bị và lưu trên nhánh feature/render-free-neon. Tuy nhiên trong môi trường phát triển hiện tại, truy cập npm registry bị lỗi DNS EAI_AGAIN, vì vậy chưa thể cài Neon CLI/npm packages, chạy lệnh neon init, thực hiện neon deploy, build Docker image hoặc chạy E2E trên Neon/Render. Cần chạy các bước trên trong máy có kết nối mạng và hoàn tất Neon login nếu CLI yêu cầu. Không coi service là healthy cho tới khi cả hai health endpoints trả ok:true và upload/download/Auth/AI/Realtime đã được thử thực tế.

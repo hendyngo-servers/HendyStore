@@ -14,22 +14,29 @@ function serve_media_file(): never
         http_response_code(404);
         exit;
     }
-    $path = storage_root() . '/media/' . $token;
-    if (!is_file($path) || !is_readable($path)) {
+    try {
+        $object = neon_storage_get('media/' . $token);
+        $mime = (string) ($object['ContentType'] ?? 'application/octet-stream');
+        if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            http_response_code(415);
+            exit;
+        }
+        $body = $object['Body'];
+        $length = $object['ContentLength'] ?? (is_object($body) && method_exists($body, 'getSize') ? $body->getSize() : null);
+        header('Content-Type: ' . $mime);
+        if (is_numeric($length)) header('Content-Length: ' . (string) $length);
+        header('Cache-Control: public, max-age=86400');
+        header('X-Content-Type-Options: nosniff');
+        while (is_object($body) && method_exists($body, 'eof') && !$body->eof()) {
+            echo $body->read(1024 * 1024);
+            if (connection_aborted()) break;
+        }
+        exit;
+    } catch (Throwable $error) {
+        error_log('[Hendy Store media] Storage read failed: ' . get_class($error));
         http_response_code(404);
         exit;
     }
-    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($path) ?: 'application/octet-stream';
-    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
-        http_response_code(415);
-        exit;
-    }
-    header('Content-Type: ' . $mime);
-    header('Content-Length: ' . (string) filesize($path));
-    header('Cache-Control: public, max-age=31536000, immutable');
-    header('X-Content-Type-Options: nosniff');
-    readfile($path);
-    exit;
 }
 
 function serve_package(PDO $db): never
@@ -43,35 +50,40 @@ function serve_package(PDO $db): never
         http_response_code(404);
         exit;
     }
-
     $token = substr((string) $product['download_url'], 5);
     if (!valid_package_token($token)) {
         http_response_code(404);
         exit;
     }
-    $path = storage_root() . '/packages/' . $token;
-    if (!is_file($path) || !is_readable($path)) {
+
+    rate_limit_or_fail($db, 'package-download', 80, 3600);
+    try {
+        $object = neon_storage_get('packages/' . $token);
+    } catch (Throwable $error) {
+        error_log('[Hendy Store download] Object Storage read failed: ' . get_class($error));
         http_response_code(404);
         exit;
     }
 
-    rate_limit_or_fail($db, 'package-download', 80, 3600);
     $update = $db->prepare('UPDATE products SET downloads = downloads + 1 WHERE slug = :slug');
     $update->execute([':slug' => $slug]);
-
     $extension = strtolower(pathinfo($token, PATHINFO_EXTENSION));
-    $contentType = 'application/octet-stream';
-    if ($extension === 'pdf') {
-        $contentType = 'application/pdf';
-    }
+    $contentType = (string) ($object['ContentType'] ?? 'application/octet-stream');
+    if (!preg_match('/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i', $contentType)) $contentType = 'application/octet-stream';
+    $body = $object['Body'];
+    $length = $object['ContentLength'] ?? (is_object($body) && method_exists($body, 'getSize') ? $body->getSize() : null);
+
     @set_time_limit(0);
     header('Content-Type: ' . $contentType);
-    header('Content-Length: ' . (string) filesize($path));
+    if (is_numeric($length)) header('Content-Length: ' . (string) $length);
     header('Content-Disposition: attachment; filename="' . preg_replace('/[^a-zA-Z0-9._-]/', '-', $slug) . '.' . $extension . '"');
     header('Cache-Control: private, no-store');
     header('X-Content-Type-Options: nosniff');
     header('X-Accel-Buffering: no');
-    readfile($path);
+    while (is_object($body) && method_exists($body, 'eof') && !$body->eof()) {
+        echo $body->read(1024 * 1024);
+        if (connection_aborted()) break;
+    }
     exit;
 }
 
@@ -91,7 +103,6 @@ function admin_upload(PDO $db): never
     $originalName = (string) ($file['name'] ?? 'file');
     $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
     $tmp = (string) $file['tmp_name'];
-    $root = storage_root();
 
     if ($kind === 'media') {
         if ($size < 1 || $size > 5 * 1024 * 1024) {
@@ -99,46 +110,39 @@ function admin_upload(PDO $db): never
         }
         $image = @getimagesize($tmp);
         $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmp) ?: '';
-        $allowed = [
-            'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg',
-            'png' => 'image/png', 'webp' => 'image/webp',
-        ];
+        $allowed = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'];
         if (!$image || !isset($allowed[$extension]) || $mime !== $allowed[$extension]) {
             json_response(['ok' => false, 'error' => 'Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP hợp lệ.'], 422);
         }
         if (($image[0] ?? 0) > 8000 || ($image[1] ?? 0) > 8000 || (($image[0] ?? 0) * ($image[1] ?? 0)) > 30000000) {
             json_response(['ok' => false, 'error' => 'Kích thước ảnh vượt giới hạn an toàn.'], 422);
         }
-        $dir = $root . '/media';
-        if (!is_dir($dir) && !mkdir($dir, 0770, true) && !is_dir($dir)) {
-            json_response(['ok' => false, 'error' => 'Không tạo được thư mục lưu ảnh.'], 500);
-        }
         $token = bin2hex(random_bytes(16)) . '.' . $extension;
-        $destination = $dir . '/' . $token;
-        if (!move_uploaded_file($tmp, $destination)) {
-            json_response(['ok' => false, 'error' => 'Không thể lưu ảnh lên máy chủ.'], 500);
+        try {
+            neon_storage_put('media/' . $token, $tmp, $mime);
+        } catch (Throwable $error) {
+            error_log('[Hendy Store upload] Image upload failed: ' . get_class($error));
+            json_response(['ok' => false, 'error' => 'Không thể lưu ảnh vào Neon Object Storage. Kiểm tra cấu hình bucket.'], 503);
         }
-        @chmod($destination, 0640);
         json_response(['ok' => true, 'data' => ['path' => 'media:' . $token, 'size' => $size]]);
     }
 
     if ($kind === 'package') {
         $allowedExtensions = ['apk','apks','xapk','zip','7z','rar','exe','msi','dmg','pkg','deb','rpm','tar','gz','pdf'];
-        $maxBytes = 200 * 1024 * 1024;
+        $maxBytes = min(200 * 1024 * 1024, (int) env_value('MAX_UPLOAD_BYTES', (string) (200 * 1024 * 1024)));
         if (!in_array($extension, $allowedExtensions, true) || $size < 1 || $size > $maxBytes) {
             json_response(['ok' => false, 'error' => 'Gói tải phải thuộc định dạng được hỗ trợ và không vượt quá 200 MB.'], 422);
         }
-        $dir = $root . '/packages';
-        if (!is_dir($dir) && !mkdir($dir, 0770, true) && !is_dir($dir)) {
-            json_response(['ok' => false, 'error' => 'Không tạo được thư mục lưu gói tải.'], 500);
-        }
         $token = bin2hex(random_bytes(16)) . '.' . $extension;
-        $destination = $dir . '/' . $token;
-        if (!move_uploaded_file($tmp, $destination)) {
-            json_response(['ok' => false, 'error' => 'Không thể lưu gói tải lên máy chủ.'], 500);
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmp) ?: 'application/octet-stream';
+        if ($mime === 'text/plain' || $mime === 'application/x-empty') $mime = 'application/octet-stream';
+        try {
+            neon_storage_put('packages/' . $token, $tmp, $mime);
+        } catch (Throwable $error) {
+            error_log('[Hendy Store upload] Package upload failed: ' . get_class($error));
+            json_response(['ok' => false, 'error' => 'Không thể lưu gói cài đặt vào Neon Object Storage. Kiểm tra cấu hình bucket.'], 503);
         }
-        @chmod($destination, 0640);
-        json_response(['ok' => true, 'data' => ['path' => 'file:' . $token, 'size' => $size, 'sha256' => hash_file('sha256', $destination)]]);
+        json_response(['ok' => true, 'data' => ['path' => 'file:' . $token, 'size' => $size, 'sha256' => hash_file('sha256', $tmp)]]);
     }
 
     json_response(['ok' => false, 'error' => 'Loại tệp tải lên không hợp lệ.'], 422);
@@ -158,17 +162,17 @@ try {
             json_response(['ok' => false, 'status' => 'configuration_required', 'error' => 'Set APP_URL to the public HTTPS domain before launch.'], 503);
         }
         $db->query('SELECT 1')->fetchColumn();
-        $storage = storage_root();
+        $storage = neon_storage_probe();
         $adminCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
         if ($adminCount < 1) {
             json_response(['ok' => false, 'status' => 'setup_required', 'error' => 'Configure ADMIN_EMAIL and ADMIN_PASSWORD before opening the store.'], 503);
         }
-        if (!is_writable($storage)) {
-            json_response(['ok' => false, 'status' => 'storage_unavailable'], 503);
+        if (!$storage) {
+            json_response(['ok' => false, 'status' => 'storage_unavailable', 'error' => 'Neon Object Storage is not reachable.'], 503);
         }
         $published = (int) $db->query("SELECT COUNT(*) FROM products WHERE status = 'published'")->fetchColumn();
         header('Cache-Control: no-store');
-        json_response(['ok' => true, 'status' => 'healthy', 'service' => 'hendy-store', 'database' => 'connected', 'storage' => 'writable', 'administrators' => $adminCount, 'publishedProducts' => $published]);
+        json_response(['ok' => true, 'status' => 'healthy', 'service' => 'hendy-store', 'database' => 'postgresql', 'storage' => 'neon-object-storage', 'auth' => env_value('NEON_AUTH_BASE_URL') !== null, 'administrators' => $adminCount, 'publishedProducts' => $published]);
     }
     if ($action === 'download_file') {
         serve_package($db);
@@ -177,6 +181,17 @@ try {
     store_session();
 
     switch ($action) {
+        case 'client_config':
+            require_method('GET');
+            json_response(['ok' => true, 'data' => [
+                'authUrl' => env_value('NEON_AUTH_BASE_URL'),
+                'realtimeUrl' => env_value('NEON_REALTIME_URL'),
+                'functionUrl' => env_value('NEON_STORE_FUNCTION_URL'),
+                'authEnabled' => env_value('NEON_AUTH_BASE_URL') !== null,
+                'realtimeEnabled' => env_value('NEON_REALTIME_URL') !== null && env_value('NEON_STORE_FUNCTION_URL') !== null,
+            ]]);
+            break;
+
         case 'bootstrap':
             require_method('GET');
             $user = current_user($db);
@@ -191,6 +206,9 @@ try {
                     'csrfToken' => csrf_token(),
                     'storeName' => env_value('STORE_NAME', 'Hendy Store'),
                     'registrationEnabled' => env_bool('ALLOW_REGISTRATION', false),
+                    'neonAuthEnabled' => env_value('NEON_AUTH_BASE_URL') !== null,
+                    'neonAuthPublicSignup' => env_bool('NEON_AUTH_PUBLIC_SIGNUP', false),
+                    'realtimeEnabled' => env_value('NEON_REALTIME_URL') !== null && env_value('NEON_STORE_FUNCTION_URL') !== null,
                 ],
             ]);
             break;
@@ -350,7 +368,7 @@ try {
             }
             if (str_starts_with((string) $product['download_url'], 'file:')) {
                 $token = substr((string) $product['download_url'], 5);
-                if (!valid_package_token($token) || !is_file(storage_root() . '/packages/' . $token)) {
+                if (!valid_package_token($token) || !neon_storage_exists('packages/' . $token)) {
                     json_response(['ok' => false, 'error' => 'Gói tải hiện không khả dụng.'], 404);
                 }
                 json_response(['ok' => true, 'data' => ['url' => 'api.php?action=download_file&slug=' . rawurlencode($slug)]]);
@@ -363,6 +381,63 @@ try {
             $update->execute([':id' => $product['id']]);
             json_response(['ok' => true, 'data' => ['url' => $product['download_url']]]);
             break;
+
+
+        case 'download_redirect':
+            require_method('GET');
+            rate_limit_or_fail($db, 'download-redirect', 80, 3600);
+            $slug = trim((string) ($_GET['slug'] ?? ''));
+            $stmt = $db->prepare("SELECT id, price_type, download_url FROM products WHERE slug = :slug AND status = 'published' LIMIT 1");
+            $stmt->execute([':slug' => $slug]);
+            $product = $stmt->fetch();
+            if (!$product || $product['price_type'] === 'Paid' || trim((string) $product['download_url']) === '') {
+                http_response_code(404);
+                exit;
+            }
+            $downloadUrl = (string) $product['download_url'];
+            if (str_starts_with($downloadUrl, 'file:')) {
+                $token = substr($downloadUrl, 5);
+                if (!valid_package_token($token) || !neon_storage_exists('packages/' . $token)) {
+                    http_response_code(404);
+                    exit;
+                }
+                header('Cache-Control: no-store');
+                header('Location: ' . app_base_url() . '/api.php?action=download_file&slug=' . rawurlencode($slug), true, 302);
+                exit;
+            }
+            $parts = parse_url($downloadUrl);
+            if (!filter_var($downloadUrl, FILTER_VALIDATE_URL) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https' || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+                http_response_code(409);
+                exit;
+            }
+            $update = $db->prepare('UPDATE products SET downloads = downloads + 1 WHERE id = :id');
+            $update->execute([':id' => $product['id']]);
+            header('Cache-Control: no-store');
+            header('Location: ' . $downloadUrl, true, 302);
+            exit;
+
+        case 'ai_product_copy':
+            require_method('POST');
+            require_admin($db);
+            require_csrf();
+            $input = request_data();
+            $title = trim((string) ($input['title'] ?? ''));
+            $developer = trim((string) ($input['developer'] ?? ''));
+            $category = trim((string) ($input['category'] ?? ''));
+            $short = trim((string) ($input['shortDescription'] ?? ''));
+            if ($title === '' || unicode_length($title) > 180 || unicode_length($short) > 255 || unicode_length($developer) > 160 || unicode_length($category) > 100) {
+                json_response(['ok' => false, 'error' => 'Thông tin ứng dụng không hợp lệ.'], 422);
+            }
+            try {
+                $description = neon_ai_completion(
+                    'Bạn là biên tập viên cửa hàng ứng dụng. Viết phần giới thiệu tiếng Việt trung thực, không bịa tính năng, không khẳng định an toàn/chứng nhận khi không có chứng cứ. Viết 2-4 đoạn, rõ công dụng, đối tượng và lưu ý cài đặt.',
+                    "Tên ứng dụng: {$title}\nNhà phát triển: {$developer}\nDanh mục: {$category}\nMô tả ngắn đã được quản trị viên cung cấp: {$short}\nHãy tạo mô tả chi tiết phù hợp từ dữ kiện này. Nếu thiếu thông tin, diễn đạt thận trọng và không tự bịa."
+                );
+                json_response(['ok' => true, 'data' => ['description' => $description]]);
+            } catch (Throwable $error) {
+                error_log('[Hendy Store AI copy] ' . $error->getMessage());
+                json_response(['ok' => false, 'error' => $error->getMessage()], 503);
+            }
 
         case 'admin_upload':
             admin_upload($db);

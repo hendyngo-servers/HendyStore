@@ -1,8 +1,8 @@
-name: Source quality checks
+name: Hendy Store quality checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/render-free-neon]
   pull_request:
     branches: [main]
 
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  syntax:
-    name: PHP and JavaScript syntax
+  php:
+    name: PHP syntax and SQLite smoke test
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -21,8 +21,14 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: pdo_sqlite, fileinfo, mbstring
+          extensions: curl, fileinfo, mbstring, pdo_pgsql, pdo_sqlite
           coverage: none
+
+      - name: Validate Composer manifest
+        run: composer validate --no-check-publish
+
+      - name: Install production PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --optimize-autoloader
 
       - name: Lint all PHP files
         shell: bash
@@ -30,20 +36,38 @@ jobs:
           set -euo pipefail
           while IFS= read -r -d '' file; do
             php -l "$file"
-          done < <(find . -type f -name '*.php' -not -path './.git/*' -print0)
+          done < <(find . -type f -name '*.php' -not -path './.git/*' -not -path './vendor/*' -print0)
 
       - name: Run SQLite smoke test
         run: php tests/smoke.php
+
+  frontend:
+    name: Neon browser bundle and source tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Check JavaScript syntax
+      - name: Install JavaScript dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Neon browser bundle
+        run: npm run build
+
+      - name: Run Neon source smoke test
+        run: npm test
+
+      - name: Check application JavaScript syntax
         run: |
           node --check js/custom.261126163157.js
           node --check admin/admin.js
 
-      - name: Ensure production secrets are not committed
-        run: test ! -f .env
+      - name: Ensure secrets are not committed
+        run: |
+          test ! -f .env
+          test ! -f .env.local

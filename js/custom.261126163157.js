@@ -13,6 +13,10 @@ async function call(action, method='GET', body=null) {
   const url=new URL(api); url.searchParams.set('action',action);
   const headers={Accept:'application/json'};
   if(method!=='GET'){headers['Content-Type']='application/json';if(state.csrf)headers['X-CSRF-Token']=state.csrf;}
+  try {
+    const token = window.HendyNeon ? await window.HendyNeon.getToken() : null;
+    if (token) headers.Authorization = 'Bearer ' + token;
+  } catch (_) {}
   const response=await fetch(url,{method,credentials:'same-origin',headers,body:body?JSON.stringify(body):undefined});
   let result; try{result=await response.json();}catch(_){throw new Error('Máy chủ trả về dữ liệu không hợp lệ.');}
   if(!response.ok||!result.ok)throw new Error(result.error||'Yêu cầu thất bại.');
@@ -45,7 +49,12 @@ async function loadProducts() {
     const url=new URL(api); url.searchParams.set('action','products'); url.searchParams.set('page',String(state.page)); url.searchParams.set('limit','18'); url.searchParams.set('sort',state.sort);
     if(state.category!=='Tất cả')url.searchParams.set('category',state.category);
     if(state.query)url.searchParams.set('q',state.query);
-    const response=await fetch(url,{headers:{Accept:'application/json'}});
+    const headers={Accept:'application/json'};
+    try {
+      const token = window.HendyNeon ? await window.HendyNeon.getToken() : null;
+      if (token) headers.Authorization = 'Bearer ' + token;
+    } catch (_) {}
+    const response=await fetch(url,{headers,credentials:'same-origin'});
     const result=await response.json();
     if(!response.ok||!result.ok)throw new Error(result.error||'Không tải được danh sách.');
     grid.innerHTML=(result.data||[]).map(p=>appCard(p,false)).join('');
@@ -66,7 +75,10 @@ async function loadStore() {
   try {
     const result=await call('bootstrap');
     state.csrf=result.data.csrfToken||''; state.user=result.data.user||null;
-    state.categories=result.data.categories||[]; state.registration=!!result.data.registrationEnabled;
+    state.categories=result.data.categories||[];
+    state.registration=!!(result.data.neonAuthPublicSignup || result.data.registrationEnabled);
+    state.neonAuthEnabled=!!result.data.neonAuthEnabled;
+    state.realtimeEnabled=!!result.data.realtimeEnabled;
     renderCategories();
     grid.innerHTML=(result.data.featured||[]).map(p=>appCard(p,true)).join('')||'<div class="loading-card">Chưa có ứng dụng nổi bật.</div>';
     if(state.user){$('#accountLabel').textContent=state.user.name;$('#accountAvatar').textContent=(state.user.name||'H').slice(0,1).toUpperCase();}
@@ -75,6 +87,9 @@ async function loadStore() {
     grid.innerHTML='<div class="loading-card">'+esc(error.message)+'</div>';
   }
   await loadProducts();
+  if (window.HendyNeon && state.realtimeEnabled) {
+    window.HendyNeon.subscribeCatalog().catch(() => {});
+  }
 }
 function authMode(mode) {
   all('.auth-tab').forEach(button=>button.classList.toggle('active',button.dataset.authMode===mode));
@@ -112,11 +127,32 @@ function bindEvents() {
     const form=event.currentTarget, mode=$('.auth-tab.active')?.dataset.authMode||'login';
     const body=Object.fromEntries(new FormData(form).entries()); $('#authMessage').textContent='Đang xử lý…';
     try {
-      const result=await call(mode,'POST',body); state.user=result.data.user; state.csrf=result.data.csrfToken||state.csrf;
+      if (state.neonAuthEnabled && window.HendyNeon) {
+        if (mode === 'register') await window.HendyNeon.signUp(body.name, body.email, body.password);
+        else await window.HendyNeon.signIn(body.email, body.password);
+        const refreshed = await call('bootstrap');
+        state.user = refreshed.data.user || null;
+        state.csrf = refreshed.data.csrfToken || state.csrf;
+        if (!state.user) throw new Error('Neon Auth đã xác thực nhưng API chưa nhận được hồ sơ người dùng. Kiểm tra JWKS và domain cấu hình.');
+      } else {
+        const result=await call(mode,'POST',body);
+        state.user=result.data.user;
+        state.csrf=result.data.csrfToken||state.csrf;
+      }
       $('#accountLabel').textContent=state.user.name;$('#accountAvatar').textContent=state.user.name.slice(0,1).toUpperCase();
       $('#authDialog').close();notify(mode==='login'?'Đăng nhập thành công.':'Tài khoản đã được tạo.');
     } catch(error) {$('#authMessage').textContent=error.message;}
   });
+  if (!window.__hendyRealtimeBound) {
+    window.__hendyRealtimeBound = true;
+    window.addEventListener('hendy:catalog-live', () => {
+      if ($('#appGrid')) loadProducts();
+    });
+    window.addEventListener('hendy:catalog-live-error', () => {
+      // REST listing remains available when a Realtime connection or renewal ends.
+      if ($('#appGrid')) loadProducts();
+    });
+  }
   document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('#searchInput')?.focus();}});
   const year=$('#yearNow'); if(year)year.textContent=String(new Date().getFullYear());
 }
