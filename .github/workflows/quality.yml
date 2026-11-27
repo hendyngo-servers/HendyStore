@@ -2,7 +2,7 @@ name: Hendy Store quality checks
 
 on:
   push:
-    branches: [main, feature/render-free-neon]
+    branches: [main, feature/render-free-neon, feature/store-ecosystem]
   pull_request:
     branches: [main]
 
@@ -41,6 +41,9 @@ jobs:
       - name: Run SQLite smoke test
         run: php tests/smoke.php
 
+      - name: Run Store Ecosystem schema smoke test
+        run: php tests/store_features_smoke.php
+
   frontend:
     name: Neon browser bundle and source tests
     runs-on: ubuntu-latest
@@ -66,6 +69,9 @@ jobs:
         run: |
           node --check js/custom.261126163157.js
           node --check admin/admin.js
+          node --check features/storefront.js
+          node --check admin/store-features.js
+          node --check library/library.js
 
       - name: Ensure secrets are not committed
         run: |
