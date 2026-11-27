@@ -222,7 +222,10 @@ checks cần báo true cho postgres, objectStorage, auth, aiGateway, realtime. N
 - Neon AI Gateway được tính usage theo model/token; có thể yêu cầu nạp credits trước khi gọi model. Nút AI không phải tính năng miễn phí vô hạn.
 - Realtime hiện là tính năng public preview/beta; kiểm tra giới hạn và trạng thái mới nhất trong Neon Console trước khi phụ thuộc vào nó cho quy trình quan trọng.
 - Render Free filesystem là ephemeral. Không thêm database SQLite hoặc upload file local làm production persistence; không gắn disk vào Free plan.
-- Mã nguồn chưa có checkout/thanh toán, refund, entitlement hay cấp quyền tải Paid. Sản phẩm Paid không được công khai/tải trong bản này.
+- Paid Store: giá bán VND, tạo đơn chuyển khoản, xác minh SePay webhook HMAC-SHA256 với timestamp, chống transaction trùng, đối soát đúng tài khoản/mã đơn/số tiền và chỉ cấp quyền tải khi giao dịch khớp.
+- Refund: người mua gửi yêu cầu; admin duyệt/từ chối và chỉ ghi nhận đã hoàn sau khi chuyển khoản thủ công ngoài ứng dụng và có mã giao dịch thực tế. Chưa tích hợp API chi tiền hoàn tự động.
+- Checkout tự khóa khi thiếu `SEPAY_WEBHOOK_SECRET`, `SEPAY_BANK_CODE` hoặc `SEPAY_BANK_ACCOUNT`.
+- iOS/IPA đã bị loại khỏi nhận diện hệ điều hành và định dạng upload.
 - Phải thay placeholder ở legal-notice/index.html bằng tên pháp lý, địa chỉ liên hệ và email hỗ trợ thực tế trước khi mở website cho công chúng.
 - Kiểm tra quyền phân phối và quét malware cho từng package trước khi công khai. Mã nguồn không tuyên bố phần mềm được chứng nhận an toàn.
 - Đổi mật khẩu Neon/Postgres nếu credential đã được chia sẻ bên ngoài hệ thống quản lý bí mật. Dùng Render Environment Variables cho runtime, không lưu .env.local vào GitHub.
@@ -236,7 +239,7 @@ Các tệp mã nguồn/config đã được chuẩn bị và lưu trên nhánh f
 
 The additive Store Ecosystem module provides:
 
-- OS-aware package selection for Windows, macOS, Android, iOS, Linux and universal builds, with a visible fallback when no compatible package is published.
+- OS-aware package selection for Windows, macOS, Android, Linux and universal builds, with a visible fallback when no compatible package is published.
 - Version records per product with platform, architecture, minimum OS, package size and release notes/changelog.
 - Product screenshot gallery, optional HTTPS video link, minimum system requirements and publisher-provided privacy notes.
 - Authenticated 1–5 star reviews with moderation; only approved reviews affect the public average. Admins can publish a developer/publisher reply.
