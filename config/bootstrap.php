@@ -625,19 +625,71 @@ function unicode_length(string $value): int {
     $n=preg_match_all('/./us',$value,$matches); return $n===false ? strlen($value) : $n;
 }
 function ensure_environment_admin(PDO $db): void {
-    $email=strtolower(trim((string)env_value('ADMIN_EMAIL',''))); $password=(string)env_value('ADMIN_PASSWORD','');
-    if ($email==='' && $password==='') return;
-    if (!filter_var($email,FILTER_VALIDATE_EMAIL) || unicode_length($password)<12) throw new RuntimeException('Set valid ADMIN_EMAIL and ADMIN_PASSWORD (12+ characters).');
-    $q=$db->prepare('SELECT id,role FROM users WHERE email=:email LIMIT 1'); $q->execute([':email'=>$email]); $old=$q->fetch();
-    if ($old) { if ($old['role']!=='admin') throw new RuntimeException('ADMIN_EMAIL belongs to a non-admin account.'); return; }
-    if (strlen($password)>72) throw new RuntimeException('New ADMIN_PASSWORD must not exceed 72 bytes (bcrypt limit).');
+    $email = strtolower(trim((string) env_value('ADMIN_EMAIL', '')));
+    $password = (string) env_value('ADMIN_PASSWORD', '');
+
+    // Both values are optional for local development, but must be supplied together.
+    if ($email === '' && $password === '') return;
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || unicode_length($password) < 12) {
+        throw new RuntimeException('Set valid ADMIN_EMAIL and ADMIN_PASSWORD (12+ characters).');
+    }
+    // PASSWORD_DEFAULT may use bcrypt, which only accepts the first 72 bytes.
+    if (strlen($password) > 72) {
+        throw new RuntimeException('ADMIN_PASSWORD must not exceed 72 bytes.');
+    }
+
+    // Match case-insensitively so an old mixed-case account is not duplicated.
+    $find = $db->prepare('SELECT id, role, password_hash FROM users WHERE LOWER(email) = :email LIMIT 1');
+    $find->execute([':email' => $email]);
+    $old = $find->fetch();
+
+    if ($old) {
+        if (($old['role'] ?? '') !== 'admin') {
+            throw new RuntimeException('ADMIN_EMAIL belongs to a non-admin account. Choose a dedicated admin email.');
+        }
+
+        // Render's ADMIN_PASSWORD is the deployment bootstrap credential.
+        // Sync it when changed; never log the password or its hash.
+        if (!password_verify($password, (string) ($old['password_hash'] ?? ''))) {
+            $update = $db->prepare('UPDATE users SET password_hash = :hash WHERE id = :id AND role = :role');
+            $update->execute([
+                ':hash' => password_hash($password, PASSWORD_DEFAULT),
+                ':id' => (int) $old['id'],
+                ':role' => 'admin',
+            ]);
+            if ($update->rowCount() !== 1) {
+                throw new RuntimeException('Unable to synchronize the configured administrator password.');
+            }
+        }
+        return;
+    }
+
     $driver = $db->getAttribute(PDO::ATTR_DRIVER_NAME);
     $sql = $driver === 'pgsql'
         ? 'INSERT INTO users(name,email,password_hash,role,created_at) VALUES(:name,:email,:hash,:role,:created) ON CONFLICT(email) DO NOTHING'
         : ($driver === 'sqlite'
             ? 'INSERT OR IGNORE INTO users(name,email,password_hash,role,created_at) VALUES(:name,:email,:hash,:role,:created)'
             : 'INSERT IGNORE INTO users(name,email,password_hash,role,created_at) VALUES(:name,:email,:hash,:role,:created)');
-    $q=$db->prepare($sql); $q->execute([':name'=>'Store Administrator',':email'=>$email,':hash'=>password_hash($password,PASSWORD_DEFAULT),':role'=>'admin',':created'=>date('Y-m-d H:i:s')]);
+    $insert = $db->prepare($sql);
+    $insert->execute([
+        ':name' => 'Store Administrator',
+        ':email' => $email,
+        ':hash' => password_hash($password, PASSWORD_DEFAULT),
+        ':role' => 'admin',
+        ':created' => date('Y-m-d H:i:s'),
+    ]);
+
+    // A concurrent first boot may have inserted the same email first.
+    $verify = $db->prepare('SELECT role, password_hash FROM users WHERE LOWER(email) = :email LIMIT 1');
+    $verify->execute([':email' => $email]);
+    $created = $verify->fetch();
+    if (!$created || $created['role'] !== 'admin') {
+        throw new RuntimeException('Administrator bootstrap did not create an admin account.');
+    }
+    if (!password_verify($password, (string) $created['password_hash'])) {
+        $sync = $db->prepare('UPDATE users SET password_hash = :hash WHERE LOWER(email) = :email AND role = :role');
+        $sync->execute([':hash' => password_hash($password, PASSWORD_DEFAULT), ':email' => $email, ':role' => 'admin']);
+    }
 }
 function public_user(array $user): array { return ['id'=>(int)$user['id'],'name'=>$user['name'],'email'=>$user['email'],'role'=>$user['role']]; }
 function current_user(PDO $db): ?array {
