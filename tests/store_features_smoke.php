@@ -56,7 +56,7 @@ $storageTestKeys = [
     'OBJECT_STORAGE_SESSION_TOKEN', 'OBJECT_STORAGE_FORCE_PATH_STYLE',
     'OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK', 'CLOUDFLARE_ACCOUNT_ID', 'AWS_ACCESS_KEY_ID',
     'AWS_SECRET_ACCESS_KEY', 'AWS_ENDPOINT_URL_S3', 'AWS_REGION', 'NEON_STORAGE_BUCKET',
-    'NEON_STORAGE_FORCE_PATH_STYLE', 'CLOUDFLARE_ACCOUNT_ID',
+    'NEON_STORAGE_FORCE_PATH_STYLE',
 ];
 $storageTestOriginal = [];
 foreach ($storageTestKeys as $key) {
@@ -110,7 +110,7 @@ if ($r2Config['endpoint'] !== 'https://0123456789abcdef0123456789abcdef.r2.cloud
     throw new RuntimeException('Cloudflare R2 connection configuration is invalid.');
 }
 $r2Client = neon_s3_client();
-if (!($r2Client instanceof \\Aws\\S3\\S3Client)) {
+if (!($r2Client instanceof \Aws\S3\S3Client)) {
     throw new RuntimeException('Cloudflare R2 must use the AWS-compatible S3 SDK client.');
 }
 
