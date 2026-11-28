@@ -419,7 +419,9 @@ function object_storage_connection_config(string $provider): array
         $secretKey = (string) env_value('OBJECT_STORAGE_SECRET_ACCESS_KEY', '');
         $sessionToken = (string) env_value('OBJECT_STORAGE_SESSION_TOKEN', '');
         $parts = parse_url($endpoint);
-        if (($parts['scheme'] ?? '') !== 'https' || empty($parts['host']) || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])
+            || trim((string)($parts['path'] ?? ''), '/') !== '' || isset($parts['user']) || isset($parts['pass'])
+            || isset($parts['query']) || isset($parts['fragment'])) {
             throw new RuntimeException('OBJECT_STORAGE_ENDPOINT must be an HTTPS S3 endpoint.');
         }
         // CloudFly's bucket naming guidance: lowercase letters, digits and hyphens.
@@ -448,7 +450,9 @@ function object_storage_connection_config(string $provider): array
         $accessKey = trim((string) env_value('AWS_ACCESS_KEY_ID', ''));
         $secretKey = (string) env_value('AWS_SECRET_ACCESS_KEY', '');
         $parts = parse_url($endpoint);
-        if ($endpoint === '' || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host']) || $region === '' || $bucket === ''
+        if ($endpoint === '' || !is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])
+            || trim((string)($parts['path'] ?? ''), '/') !== '' || isset($parts['user']) || isset($parts['pass'])
+            || isset($parts['query']) || isset($parts['fragment']) || $region === '' || $bucket === ''
             || $accessKey === '' || $secretKey === '' || !preg_match('/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/', $bucket)) {
             throw new RuntimeException('Neon Object Storage credentials are not fully configured.');
         }
