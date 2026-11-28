@@ -662,6 +662,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
  LIMIT 1");
             $integrityStmt->execute([':id' => (int)$product['id']]);
             $integrity = $integrityStmt->fetch() ?: null;
+            if ($integrity && !preg_match('/^[a-f0-9]{64}$/', (string)$integrity['sha256'])) $integrity = null;
             json_response(['ok' => true, 'data' => [
                 'screenshots' => $shots,
                 'versions' => $versions,
