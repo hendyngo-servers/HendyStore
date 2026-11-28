@@ -102,7 +102,7 @@ The Account ID is public and stored in Wrangler configuration. Do not store it a
 - Existing private R2 bucket: `hendy-store`, EU jurisdiction. Workflow binds it and refuses public buckets unless the private-access confirmation is set in the workflow.
 - KV namespace: `hendystore-catalog-cache`. Create if missing, otherwise reuse by name.
 - D1 database: `hendystore-edge-db`. Create if missing, otherwise reuse by name. It remains empty/edge-local and is not populated from Neon.
-- Worker database provider: `origin`; PHP/Neon business APIs remain on Render. Hyperdrive and MySQL adapters are not used.
+- Worker database provider: `origin`; PHP/Neon business APIs remain on Render. D1 is reserved for isolated edge data.
 - Worker storage provider: `r2`.
 - Next SSR Worker creation is gated by GitHub Actions variable `CF_ENABLE_NEXT_WORKER=true`. Cloudflare requires Workers Admin to create a new Worker; the current token only has Workers Scripts Edit for the existing `hendy-platform-api`. Add Workers Admin to the token before enabling that variable.
 
