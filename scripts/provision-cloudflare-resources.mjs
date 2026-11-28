@@ -66,7 +66,7 @@ if (process.env.CF_CREATE_R2 === "true") {
 const kvName = (process.env.CF_KV_NAMESPACE_NAME || "hendy-store-cache").trim();
 const kvId = (process.env.CF_KV_NAMESPACE_ID || "").trim();
 if (kvId) {
-  const block = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\\n");
+  const block = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\n");
   if (await appendBinding(block, "CACHE")) report.push("Added existing KV namespace binding CACHE.");
 } else if (process.env.CF_CREATE_KV === "true") {
   run(["kv", "namespace", "create", kvName, "--binding", "CACHE", "--update-config", "--config", configPath]);
