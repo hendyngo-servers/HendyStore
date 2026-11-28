@@ -32,9 +32,8 @@ export async function probeDatabase(env: Env): Promise<{ provider: DatabaseProvi
     };
     return {
       provider,
-      // Database health is reported separately from Object Storage health.
-      ok: response.status < 500 &&
-        (health.database === "postgresql" || health.components?.database === "healthy")
+      // A storage-only 503 must not be misreported as a Neon database failure.
+      ok: health.database === "postgresql" || health.components?.database === "healthy"
     };
   } catch {
     return { provider, ok: false };
