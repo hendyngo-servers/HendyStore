@@ -12,8 +12,11 @@ function json(data: unknown, status = 200, headers: HeadersInit = {}): Response 
 
 function allowedOrigin(request: Request, env: Env): string {
   const origin = request.headers.get("Origin") || "";
-  const allowed = String(env.ALLOWED_ORIGIN || "");
-  return origin && allowed && origin === allowed ? origin : "";
+  const allowed = String(env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return origin && allowed.includes(origin) ? origin : "";
 }
 
 function withCors(request: Request, env: Env, response: Response): Response {
@@ -83,63 +86,160 @@ async function proxyToPhp(request: Request, env: Env, ctx: ExecutionContext): Pr
 }
 
 async function platformHealth(env: Env): Promise<Response> {
+  const databaseProvider = resolveDatabaseProvider(env);
+  const storageProvider = resolveStorageProvider(env);
   const checks: Record<string, unknown> = {
-    databaseProvider: resolveDatabaseProvider(env),
-    storageProvider: resolveStorageProvider(env)
+    databaseProvider,
+    storageProvider,
+    bindings: {
+      r2: Boolean(env.R2),
+      kv: Boolean(env.CACHE),
+      d1: Boolean(env.DB)
+    }
   };
+
   try {
     checks.database = await probeDatabase(env);
-  } catch (error) {
-    checks.database = { ok: false, error: error instanceof Error ? error.message : "Database probe failed." };
+  } catch {
+    checks.database = { provider: databaseProvider, ok: false };
   }
+
   if (env.DB) {
     try {
       await env.DB.prepare("SELECT 1 AS ok").first();
-      checks.d1 = { provider: "d1", ok: true };
+      checks.d1 = { provider: "d1", ok: true, readOnly: true };
     } catch {
-      checks.d1 = { provider: "d1", ok: false };
+      checks.d1 = { provider: "d1", ok: false, readOnly: true };
+    }
+  } else {
+    checks.d1 = { provider: "d1", ok: false, error: "binding_missing" };
+  }
+
+  if (env.CACHE) {
+    try {
+      await env.CACHE.get("__hendy_health__/read-only-probe");
+      checks.kv = { provider: "kv", ok: true, readOnly: true };
+    } catch {
+      checks.kv = { provider: "kv", ok: false, readOnly: true };
+    }
+  } else {
+    checks.kv = { provider: "kv", ok: false, error: "binding_missing" };
+  }
+
+  if (storageProvider === "r2" && env.R2) {
+    try {
+      await env.R2.head("__hendy_health__/read-only-probe");
+      checks.storage = { provider: "r2", ok: true, binding: true, readOnly: true };
+    } catch {
+      checks.storage = { provider: "r2", ok: false, binding: true, readOnly: true };
+    }
+  } else if (storageProvider === "r2") {
+    checks.storage = { provider: "r2", ok: false, error: "binding_missing" };
+  } else {
+    try {
+      checks.storage = await probeStorage(env);
+    } catch {
+      checks.storage = { provider: storageProvider, ok: false, readOnly: true };
     }
   }
+
+  const databaseOk = Boolean((checks.database as { ok?: boolean })?.ok);
+  const storageOk = Boolean((checks.storage as { ok?: boolean })?.ok);
+  return json({
+    ok: databaseOk && storageOk,
+    service: "hendy-store-platform-worker",
+    mode: "read-only",
+    checks
+  }, databaseOk && storageOk ? 200 : 503);
+}
+
+function constantTimeEquals(left: string, right: string): boolean {
+  if (!left || left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return mismatch === 0;
+}
+
+async function platformWriteProbe(env: Env): Promise<Response> {
+  const checks: Record<string, unknown> = {};
+  try {
+    checks.database = await probeDatabase(env);
+  } catch {
+    checks.database = { provider: resolveDatabaseProvider(env), ok: false };
+  }
+
+  if (env.DB) {
+    try {
+      await env.DB.prepare("SELECT 1 AS ok").first();
+      checks.d1 = { provider: "d1", ok: true, readOnly: true };
+    } catch {
+      checks.d1 = { provider: "d1", ok: false, readOnly: true };
+    }
+  } else {
+    checks.d1 = { provider: "d1", ok: false, error: "binding_missing" };
+  }
+
   if (env.CACHE) {
     const key = "__hendy_health__/" + crypto.randomUUID();
+    let roundTrip = false;
+    let cleanup = false;
     try {
-      await env.CACHE.put(key, "ok", { expirationTtl: 60 });
-      const value = await env.CACHE.get(key);
-      await env.CACHE.delete(key);
-      checks.kv = { ok: value === "ok" };
+      await env.CACHE.put(key, "hendy-kv-health-probe", { expirationTtl: 60 });
+      roundTrip = (await env.CACHE.get(key)) === "hendy-kv-health-probe";
     } catch {
-      await env.CACHE.delete(key).catch(() => undefined);
-      checks.kv = { ok: false };
+      roundTrip = false;
+    } finally {
+      try {
+        await env.CACHE.delete(key);
+        cleanup = true;
+      } catch {
+        cleanup = false;
+      }
     }
+    checks.kv = { provider: "kv", ok: roundTrip && cleanup, roundTrip, cleanup };
+  } else {
+    checks.kv = { provider: "kv", ok: false, error: "binding_missing" };
   }
+
   if (env.R2) {
     const key = "__hendy_health__/" + crypto.randomUUID() + ".txt";
+    let roundTrip = false;
+    let cleanup = false;
     try {
       await env.R2.put(key, "hendy-r2-health-probe", {
         httpMetadata: { contentType: "text/plain; charset=utf-8" }
       });
       const object = await env.R2.get(key);
-      const body = object ? await object.text() : null;
-      await env.R2.delete(key);
-      checks.storage = { provider: "r2", ok: body === "hendy-r2-health-probe", roundTrip: true };
+      roundTrip = Boolean(object && (await object.text()) === "hendy-r2-health-probe");
     } catch {
-      await env.R2.delete(key).catch(() => undefined);
-      checks.storage = { provider: "r2", ok: false, roundTrip: false };
+      roundTrip = false;
+    } finally {
+      try {
+        await env.R2.delete(key);
+        cleanup = true;
+      } catch {
+        cleanup = false;
+      }
     }
+    checks.storage = { provider: "r2", ok: roundTrip && cleanup, roundTrip, cleanup };
   } else {
-    try {
-      checks.storage = await probeStorage(env);
-    } catch (error) {
-      checks.storage = { ok: false, error: error instanceof Error ? error.message : "Storage probe failed." };
-    }
+    checks.storage = { provider: "r2", ok: false, error: "binding_missing" };
   }
+
   const healthy = Boolean(
     (checks.database as { ok?: boolean })?.ok &&
-    (checks.storage as { ok?: boolean })?.ok &&
-    (!env.DB || (checks.d1 as { ok?: boolean })?.ok) &&
-    (!env.CACHE || (checks.kv as { ok?: boolean })?.ok)
+    (checks.d1 as { ok?: boolean })?.ok &&
+    (checks.kv as { ok?: boolean })?.ok &&
+    (checks.storage as { ok?: boolean })?.ok
   );
-  return json({ ok: healthy, service: "hendy-store-platform-worker", checks }, healthy ? 200 : 503);
+  return json({
+    ok: healthy,
+    service: "hendy-store-platform-worker",
+    mode: "authenticated-write-probe",
+    checks
+  }, healthy ? 200 : 503);
 }
 
 export default {
@@ -150,6 +250,17 @@ export default {
     }
     if (url.pathname === "/api/v2/platform/health" && request.method === "GET") {
       return withCors(request, env, await platformHealth(env));
+    }
+    if (url.pathname === "/api/v2/platform/probe" && request.method === "POST") {
+      const expected = String(env.PLATFORM_HEALTH_TOKEN || "");
+      const supplied = String(request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!expected) {
+        return withCors(request, env, json({ ok: false, error: "Protected write probe is not configured." }, 503));
+      }
+      if (!constantTimeEquals(supplied, expected)) {
+        return withCors(request, env, json({ ok: false, error: "Unauthorized." }, 401));
+      }
+      return withCors(request, env, await platformWriteProbe(env));
     }
     if (url.pathname === "/api/v2/platform/capabilities" && request.method === "GET") {
       return withCors(request, env, json({

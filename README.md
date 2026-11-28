@@ -60,14 +60,15 @@ Các công nghệ dưới đây là lựa chọn nâng cấp, không phải thà
 ## Cloudflare Workers và Pages
 
 PHP/Apache và Neon PostgreSQL tiếp tục chạy trên Render. Cloudflare cung cấp lớp edge và các điểm triển khai độc lập:
-- API Worker: `cloudflare/platform-worker`, cập nhật Worker có sẵn `hendy-platform-api` tại `https://hendy-platform-api.ngogiaidy56.workers.dev`; Neon được gọi qua HTTPS Render origin, không dùng Hyperdrive.
-- Next.js SSR: `apps/storefront-next`, build bằng OpenNext và deploy thành Worker `hendystore-next` tại `https://hendystore-next.ngogiaidy56.workers.dev`. Job này chỉ chạy khi GitHub Actions variable `CF_ENABLE_NEXT_WORKER=true` và Cloudflare token có quyền Workers Admin để tạo Worker mới.
-- Pages: `cloudflare/pages/public`, project `hendystore-pages` tại `https://hendystore-pages.pages.dev`, phục vụ static assets và proxy route động/PHP về Render.
-- R2, KV và D1 được gắn bằng binding native. Health endpoint của API Worker thử R2 put/get/delete một object tạm, KV put/get/delete key tạm và D1 `SELECT 1`.
-- Tài khoản Cloudflare hiện chưa có Zone/domain tùy chỉnh; dùng `workers.dev` và `pages.dev` trước, custom domain chỉ cấu hình sau khi Zone có sẵn.
+- API Worker: `cloudflare/platform-worker`, cập nhật Worker có sẵn `hendy-platform-api`; hostname `workers.dev` chỉ được ghi nhận sau khi deployment trả về URL thực tế. Neon được gọi qua HTTPS Render origin.
+- Next.js SSR: `apps/storefront-next`, build bằng OpenNext. Target Worker `hendystore-next` vẫn bị khóa đến khi cấp quyền Workers Admin; canonical URL tiếp tục là Render URL cho đến khi hostname Cloudflare được triển khai và xác minh.
+- Pages: `cloudflare/pages/public`, project `hendystore-pages`, phục vụ static assets và proxy route động/PHP về Render qua biến thường `ORIGIN_URL` trong `cloudflare/pages/wrangler.toml`.
+- R2 EU `hendy-store` được khai báo thành binding native trong API Worker. Workflow tìm/gắn hoặc tạo KV `hendystore-catalog-cache` và D1 `hendystore-edge-db`; D1 không sao chép dữ liệu Neon.
+- `GET /api/v2/platform/health` chỉ chạy kiểm tra read-only. `POST /api/v2/platform/probe` mới chạy R2/KV put-get-delete và D1 `SELECT 1`, yêu cầu secret `PLATFORM_HEALTH_TOKEN`.
+- Tài khoản Cloudflare hiện chưa có Zone/domain tùy chỉnh; dùng `workers.dev` và `pages.dev` sau khi deploy, chỉ thêm custom domain khi Zone có sẵn.
 - GitHub Actions deploy chỉ chạy thủ công qua workflow `Deploy HendyStore platform targets`; các target gồm `provision`, `worker`, `next`, `pages`, `all`.
 
-Để bật deploy CI, thêm GitHub repository secret `CLOUDFLARE_API_TOKEN` trong Settings → Secrets and variables → Actions. Account ID là giá trị công khai đã đặt trong Wrangler config, không cần lưu thành secret. Không gửi token qua chat hoặc commit vào mã nguồn.
+Để bật deploy CI, thêm repository secret `CLOUDFLARE_API_TOKEN` tại GitHub Settings → Secrets and variables → Actions. Để chạy write-probe, thêm secret `CF_PLATFORM_HEALTH_TOKEN` (có thể tạo ngẫu nhiên cục bộ bằng `openssl rand -hex 32`). Account ID là giá trị công khai đã đặt trong Wrangler config, không cần lưu thành secret. Không gửi token qua chat hoặc commit vào mã nguồn.
 
 ## Neon Data API — danh mục công khai
 

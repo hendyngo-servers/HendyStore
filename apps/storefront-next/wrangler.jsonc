@@ -12,7 +12,7 @@
   },
   "vars": {
     "HENDY_API_ORIGIN": "https://hendystore.onrender.com",
-    "NEXT_PUBLIC_SITE_URL": "https://hendystore-next.ngogiaidy56.workers.dev",
+    "NEXT_PUBLIC_SITE_URL": "https://hendystore.onrender.com",
     "PLATFORM_MODE": "cloudflare-workers"
   },
   "observability": { "enabled": true }

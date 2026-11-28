@@ -52,10 +52,21 @@ for (const token of [
 assert.ok(workerSource.includes('incoming.searchParams.get("action") === "products"'), "KV cache must be limited to the public catalogue action");
 assert.ok(workerSource.includes('!request.headers.has("Authorization")'), "KV cache must exclude authenticated requests");
 assert.ok(workerSource.includes('!request.headers.has("Cookie")'), "KV cache must exclude cookie-bearing requests");
+const publicHealthSource = workerSource.slice(workerSource.indexOf("async function platformHealth"), workerSource.indexOf("function constantTimeEquals"));
+assert.ok(!publicHealthSource.includes("CACHE.put"), "Public health must not mutate KV");
+assert.ok(!publicHealthSource.includes("R2.put"), "Public health must not mutate R2");
+assert.ok(workerSource.includes('url.pathname === "/api/v2/platform/probe" && request.method === "POST"'), "Write probe must use an explicit POST route");
+assert.ok(workerSource.includes("constantTimeEquals(supplied, expected)"), "Write probe must require its protected token");
 for (const token of ["__hendy_health__", "CACHE.put", "CACHE.get", "CACHE.delete", "R2.put", "R2.get", "R2.delete", "env.DB.prepare"]) {
   assert.ok(workerSource.includes(token), "Missing live Cloudflare binding health probe: " + token);
 }
 
+const workerConfig = await readFile("cloudflare/platform-worker/wrangler.toml", "utf8");
+assert.ok(workerConfig.includes('OBJECT_STORAGE_PROVIDER = "r2"'), "Worker must default to the production R2 provider");
+assert.ok(workerConfig.includes('bucket_name = "hendy-store"'), "Worker must bind the existing HendyStore R2 bucket");
+assert.ok(workerConfig.includes('jurisdiction = "eu"'), "Worker must bind the R2 EU jurisdiction");
+const pagesConfig = await readFile("cloudflare/pages/wrangler.toml", "utf8");
+assert.ok(pagesConfig.includes('ORIGIN_URL = "https://hendystore.onrender.com"'), "Pages must have a non-secret Render origin var");
 const workerDatabase = await readFile("cloudflare/platform-worker/src/database.ts", "utf8");
 for (const token of ["origin", "env.DB", "prepare", "SELECT 1"]) {
   assert.ok(workerDatabase.includes(token), "Missing Cloudflare database adapter: " + token);
@@ -97,6 +108,10 @@ assert.ok(infraClient.includes("user?.role === 'admin'"), "Infrastructure page m
 const platformWorkflow = await readFile(".github/workflows/deploy-platform.yml", "utf8");
 assert.ok(platformWorkflow.includes("workflow_dispatch:"), "Cloudflare deployments must be manually triggered");
 assert.ok(!/^\s+push:/m.test(platformWorkflow.split("\n").slice(0,12).join("\n")), "Cloudflare deployments must not auto-run on normal pushes");
+assert.ok(platformWorkflow.includes("secrets.CLOUDFLARE_API_TOKEN"), "Cloudflare deployments must use a protected repository secret");
+assert.ok(platformWorkflow.includes("secrets.CF_PLATFORM_HEALTH_TOKEN"), "Worker write-probes must use a separate protected secret");
+assert.ok(platformWorkflow.includes("working-directory: cloudflare/pages"), "Pages Wrangler config must be loaded from its project directory");
+assert.ok(!platformWorkflow.includes("pages secret put ORIGIN_URL"), "Pages origin must not be stored as an unnecessary secret");
 
 for (const [path, token] of [
   ["js/custom.261126163157.js", "response.status===419"],

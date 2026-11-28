@@ -9,13 +9,21 @@ workers_dev = true
 HENDY_API_ORIGIN = "https://hendystore.onrender.com"
 CLOUDFLARE_ACCOUNT_ID = "918ff2f016938fc978ed23b96505b21e"
 OBJECT_STORAGE_JURISDICTION = "eu"
+ALLOWED_ORIGINS = "https://hendystore.onrender.com,https://hendystore-pages.pages.dev"
 DATABASE_PROVIDER = "origin"
-OBJECT_STORAGE_PROVIDER = "neon"
+OBJECT_STORAGE_PROVIDER = "r2"
+OBJECT_STORAGE_ENDPOINT = "https://918ff2f016938fc978ed23b96505b21e.eu.r2.cloudflarestorage.com"
+OBJECT_STORAGE_BUCKET = "hendy-store"
 OBJECT_STORAGE_REGION = "auto"
 OBJECT_STORAGE_FORCE_PATH_STYLE = "true"
 LEGACY_ORIGIN_PROXY = "true"
 
-# Configure these bindings in Cloudflare after signing in.
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "hendy-store"
+jurisdiction = "eu"
+
+# D1 and KV bindings are resolved by the idempotent provisioner.
 # [[d1_databases]]
 # binding = "DB"
 # database_name = "hendy-store-edge"
@@ -25,8 +33,4 @@ LEGACY_ORIGIN_PROXY = "true"
 # [[kv_namespaces]]
 # binding = "CACHE"
 # id = "<KV_NAMESPACE_ID>"
-#
-# [[r2_buckets]]
-# binding = "R2"
-# bucket_name = "<R2_BUCKET_NAME>"
 #

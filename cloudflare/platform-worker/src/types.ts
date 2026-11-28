@@ -1,6 +1,7 @@
 export interface Env {
   /** HTTPS URL of the existing PHP API origin; Neon remains behind this origin. */
   HENDY_API_ORIGIN: string;
+  ALLOWED_ORIGINS?: string;
   ALLOWED_ORIGIN?: string;
   /** "origin" probes the PHP/Neon API. "d1" probes the separate Worker-local D1 database. */
   DATABASE_PROVIDER?: "origin" | "d1";

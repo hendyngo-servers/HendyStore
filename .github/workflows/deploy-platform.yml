@@ -54,6 +54,18 @@ jobs:
           CF_DATABASE_PROVIDER: "origin"
           CF_OBJECT_STORAGE_PROVIDER: "r2"
         run: node scripts/provision-cloudflare-resources.mjs
+      - name: Upload optional protected health-probe secret
+        working-directory: cloudflare/platform-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
+          CF_PLATFORM_HEALTH_TOKEN: ${{ secrets.CF_PLATFORM_HEALTH_TOKEN }}
+        run: |
+          node ../../scripts/write-cloudflare-secrets.mjs /tmp/hendy-worker-secrets.json
+          if [ -f /tmp/hendy-worker-secrets.json ]; then
+            npx wrangler secret bulk /tmp/hendy-worker-secrets.json --config wrangler.toml
+            rm -f /tmp/hendy-worker-secrets.json
+          fi
       - name: Deploy Platform API Worker
         working-directory: cloudflare/platform-worker
         env:
@@ -107,14 +119,9 @@ jobs:
           CF_PAGES_PROJECT_NAME: "hendystore-pages"
           CF_PAGES_PRODUCTION_BRANCH: "main"
         run: node scripts/ensure-cloudflare-pages-project.mjs
-      - name: Set the Render origin for Pages Functions
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
-          CF_PAGES_ORIGIN_URL: ${{ vars.CF_PAGES_ORIGIN_URL || 'https://hendystore.onrender.com' }}
-        run: printf '%s' "$CF_PAGES_ORIGIN_URL" | npx --yes wrangler pages secret put ORIGIN_URL --project-name hendystore-pages
       - name: Deploy HendyStore Pages proxy
+        working-directory: cloudflare/pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
-        run: npx --yes wrangler pages deploy cloudflare/pages/public --project-name hendystore-pages --branch main
+        run: npx --yes wrangler pages deploy public --project-name hendystore-pages --branch main
