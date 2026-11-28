@@ -1,153 +1,121 @@
-# HendyStore target architecture — unified Cloudflare + Render + Neon
+# HendyStore — kiến trúc Cloudflare + Render + Neon
 
-> Architecture proposal in PR #4. These diagrams do not mean Cloudflare, Azure, Nginx, Elasticsearch, Redis or parser workers are deployed.
+## Nguồn dữ liệu và trạng thái hiện tại
 
-## 1. Architecture decision
-
-The two supplied diagrams describe overlapping deployment profiles. They should be combined as one platform design, not deployed as two complete and competing stacks.
-
-**Primary production path:** Cloudflare DNS/WAF/CDN (after domain configuration) → current Render PHP/Apache origin → Neon PostgreSQL + Neon Object Storage. Add background workers, search and cache services only when the workload and acceptance tests justify them.
-
-**Azure path:** Azure Front Door is an alternative/failover edge. It can be tested against the same origin; do not chain Cloudflare and Azure Front Door by default. Do not create Azure SQL alongside Neon as a second authoritative database.
-
-## 2. Verified runtime inventory
-
-| Component | Verified status |
-|---|---|
-| Web origin | Render Web Service `HendyStore`, Docker, PHP 8.4 + Apache, Singapore, Free plan, branch `main` |
-| Database | Neon project `sparkling-grass-08962862`, branch `production`, database `Hendy_Store` |
-| Object storage | Private Neon Object Storage bucket `hendy-store-files`, S3-compatible |
-| Identity | Neon Managed Better Auth in separate `neondb` database; local Admin password/session remains |
-| Cloudflare | Worker/Pages proxy source exists in `cloudflare/`; production deployment, DNS, WAF and custom domains are not verified |
-| Nginx | Not deployed; current Render container runs Apache |
-| Redis / Render Key Value | No Key Value instance exists in the Render workspace |
-| Elasticsearch | Not configured |
-| Python package parser / antivirus worker | Not deployed |
-| Azure Front Door / Azure SQL / Blob | Not configured |
-
-The Render service currently auto-deploys from `main`. The feature branch in PR #3 does not deploy to production.
-
-## 3. Unified target architecture
-
-```mermaid
-flowchart TB
-  U[User / Googlebot / Windows client] --> CF[Cloudflare DNS + WAF + CDN<br/>Primary edge after domain verification]
-  CF --> ROUTE{Host and path router}
-  ROUTE -->|App / API| RENDER[Render PHP 8.4 + Apache<br/>SSR pages + compatibility API router]
-  ROUTE -->|Public static files| STATIC[Static asset cache<br/>public immutable assets only]
-  ROUTE -->|Published packages| DL[Download edge<br/>after signed-grant validation]
-  RENDER --> ID[Neon Auth<br/>Google OAuth + email/password]
-  RENDER --> PG[(Neon PostgreSQL<br/>Hendy_Store — source of truth)]
-  RENDER --> OBJ[(Private Neon Object Storage<br/>original uploads and packages)]
-  RENDER --> JOBS[(PostgreSQL job queue<br/>scan / parse / moderation)]
-  JOBS --> WORKER[Python package worker<br/>APK metadata / archive inspection / AV]
-  WORKER --> OBJ
-  WORKER --> PG
-  PG --> SEARCH[PostgreSQL full-text search<br/>initial autocomplete and facets]
-  PG -. scale later .-> ES[(Elasticsearch / OpenSearch<br/>derived search index)]
-  PG -. optional .-> REDIS[(Redis / Render Key Value<br/>hot catalogue cache / short-lived locks)]
-  OBJ --> DL
-  DL --> U
-```
-
-### Cache and origin rules
-
-- Cache public, versioned static assets only: CSS/JS bundles, public icons and approved screenshots. Use content-hashed filenames and long immutable TTLs.
-- Keep `/api.php`, `/admin/`, login, OAuth callbacks, CSRF/bootstrap endpoints, user library, sessions, signed grants, private uploads and quarantine objects out of shared cache.
-- Do not cache a download by URL until authorization and cache-key design are reviewed. One-time grants must not be bypassed by an edge cache hit.
-- Use one canonical app origin for authentication cookies and OAuth callbacks. Static/download hostnames should serve public assets only and should not receive the app session cookie.
-- Keep database and storage credentials server-side. Never expose Neon passwords, OAuth client secrets or S3 secret keys in browser bundles or public Worker variables.
-
-## 4. Mapping of the first supplied diagram
-
-| Component in diagram | HendyStore decision |
-|---|---|
-| Cloudflare multi-domain CDN | Primary edge candidate, after DNS ownership, SSL, WAF and cache rules are verified |
-| `static.apkpures.xyz` / `winudf.com` | Names supplied in the drawing only. Ownership and DNS control are unverified; do not configure them as live aliases yet |
-| Nginx reverse proxy | Optional for a future Ubuntu/VPS PHP-FPM profile. Do not add Nginx beside current Render Apache without a specific need |
-| Elasticsearch autocomplete | Later scale option. Start with PostgreSQL full-text/trigram search; Elasticsearch is a derived index, never catalogue authority |
-| Download CDN edge | Add after signed-grant validation is enforced at origin/edge. Pending/rejected/private objects must never be cacheable |
-| SSR PHP / Go | Keep current PHP SSR and API. Go is not required for current workload |
-| MySQL & Redis | Do not add MySQL. Neon PostgreSQL stays canonical. Redis is optional for cache/coordination; no Redis currently exists |
-| APK Parser Worker | Add as isolated Python background worker consuming a PostgreSQL-backed queue first |
-| S3 Object Storage | Neon Object Storage is already S3-compatible. R2/Azure Blob can be evaluated later as adapters or mirrors |
-
-## 5. Package intake and trust pipeline
-
-```mermaid
-flowchart TD
-  UP[Admin / verified publisher upload] --> Q[Private quarantine object]
-  Q --> ENQ[Create app_security_job in Neon PostgreSQL]
-  ENQ --> W[Isolated Python worker]
-  W --> TYPE[Validate extension, MIME, magic bytes, size and archive paths]
-  TYPE --> HASH[Calculate SHA-256 and package metadata]
-  HASH --> PARSE[Parse APK / XAPK / EXE / MSI metadata]
-  PARSE --> AV[Malware scan and signature checks]
-  AV --> DEC{Verdict}
-  DEC -->|Clean| REVIEW[Admin review / publisher policy]
-  DEC -->|Suspicious or unavailable| HOLD[Keep quarantined; manual review]
-  DEC -->|Malicious / invalid| REJECT[Reject and record reason]
-  REVIEW -->|Approve| PUBLISH[Promote immutable package object]
-  PUBLISH --> RELEASE[Publish app version and changelog]
-  RELEASE --> CDN[Issue short-lived download grant]
-```
-
-Security requirements:
-
-- Never execute an uploaded installer or APK in the worker. Inspect untrusted data in a resource-limited sandbox.
-- Validate archive entries against path traversal, symlinks, zip bombs, excessive file counts, oversized decompressed content and malformed nested archives.
-- Run non-root with CPU, memory, file-size and wall-clock limits. Disable general outbound networking; allowlist only required scanner/storage endpoints.
-- Scan the exact immutable object/hash that will be published. A changed package invalidates its previous scan.
-- Store SHA-256, size, platform, architecture, package identity, scanner result/version, timestamps and reviewer decision.
-- `pending`, `scanning`, `review`, `rejected` and `clean` are distinct states. A clean scan alone does not authorize publication.
-- Scanner API keys belong only in worker secrets. Use hash lookup first where permitted; upload binaries only after reviewing the scanner provider's retention/privacy terms.
-
-## 6. Queue, search and cache
-
-### Queue
-
-Start with a PostgreSQL-backed queue table using transactional claiming (`FOR UPDATE SKIP LOCKED`), retry counts, lease expiration and dead-letter status. This avoids creating a Redis dependency before upload volume warrants it. A Render Background Worker should be a private continuously running queue consumer, not a public API.
-
-Move to Render Key Value/Redis only if measured throughput, concurrency or cache needs justify it. No Key Value instance currently exists.
-
-### Search
-
-Use PostgreSQL full-text search and trigram indexes for the current catalogue. Add Elasticsearch/OpenSearch when query volume, typo tolerance, language analysis, facets or ranking exceed PostgreSQL. Keep the SQL catalogue canonical and rebuild the search index from PostgreSQL if the search service is lost.
-
-### Cache
-
-Redis may hold popular app IDs, 24-hour counters, search suggestions and short-lived deduplication keys. Cache values must be disposable and rebuildable. User roles, ownership, download grants and product publication state stay authoritative in PostgreSQL.
-
-## 7. Multi-domain layout
-
-Use a canonical identity hostname, a static hostname and a download hostname, for example:
-
-- `https://hendystore.example` — web app, login and OAuth callback.
-- `https://static.hendystore.example` — public immutable assets.
-- `https://dl.hendystore.example` — published package distribution only.
-
-These are examples, not configured domains. Verify registrar ownership, Cloudflare zone access, DNS control and certificate provisioning first. Do not use `static.apkpures.xyz` or `winudf.com` until the owner verifies those domains and approves the branding.
-
-Set Neon Auth trusted domains only for origins that actually host the sign-in UI/callback. Do not add storage-only domains to the auth allowlist unless the OAuth flow truly redirects there.
-
-## 8. Rollout sequence
-
-| Order | Work | Completion gate |
+| Lớp | Vai trò | Trạng thái đã xác minh |
 |---|---|---|
-| 0 | Google OAuth client and Neon Auth settings | Google consent, callback and verified production session work in a real browser |
-| 1 | Keep Render + Neon as primary origin | CI + Neon integration tests; health checks green |
-| 2 | Cloudflare edge and one owned custom domain | DNS/SSL verified; API/auth/admin/download bypass cache |
-| 3 | Package quarantine and PostgreSQL job queue | Unscanned package cannot receive a public download grant |
-| 4 | Python parser/AV worker | APK/XAPK fixtures, timeout/memory limits and malicious fixtures pass |
-| 5 | Search and popularity cache | PostgreSQL FTS first; Redis/Elasticsearch only after metrics justify them |
-| 6 | Download edge | Grant authorization, range/resume, checksums, cache-key isolation and logs verified |
-| 7 | Azure Front Door alternate edge | Separate route, health probe, WAF, cache exclusions and failover test |
+| Render Web Service | PHP 8.4 + Apache, API nghiệp vụ và Admin | Production origin tại \`https://hendystore.onrender.com\` |
+| Neon PostgreSQL | Tài khoản, ứng dụng, phiên bản, release, thư viện và lịch sử tải | Project \`sparkling-grass-08962862\`, branch \`production\`, database \`Hendy_Store\` |
+| Neon Auth | Identity/JWKS và đăng nhập | Dùng bởi PHP/browser integration |
+| Object Storage | Package và media riêng tư | Adapter Neon/CloudFly/R2/S3; phải có bucket private và HeadBucket pass trước khi đổi provider |
+| Cloudflare account | Workers, Pages, R2, D1, KV, Queues | Tài khoản đã kết nối; chưa có Zone/domain tùy chỉnh |
+| Next.js Storefront | SSR, SEO, metadata ứng dụng | Build Next.js và OpenNext đã pass CI; chưa xác nhận deploy production |
+| Python package worker | Parser/antivirus process riêng | Không có mã worker Python đang chạy trong repository |
+| Azure Front Door / Azure SQL / Azure Blob | Azure infrastructure | Không dùng trong kiến trúc đã chọn |
 
-Do not create Azure SQL, MySQL, Elasticsearch, Redis, a second CDN chain or a parser worker merely to match a drawing. Add each after its acceptance gate, budget review and operational owner are clear.
+Neon là nguồn dữ liệu canonical. Không tạo bản ghi người dùng, sản phẩm, đơn hàng hay lịch sử tải thứ hai tại D1. Không bật dual-write.
 
-## 9. Technical references
+## Luồng production
 
-- [Cloudflare default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
-- [Azure Front Door caching](https://learn.microsoft.com/en-us/azure/frontdoor/how-to-configure-caching)
-- [Render Background Workers](https://render.com/docs/background-workers)
-- [Elasticsearch search-as-you-type](https://www.elastic.co/docs/reference/elasticsearch/mapping-reference/search-as-you-type)
+\`\`\`mermaid
+flowchart TB
+  USER[Web / Mobile / Windows] --> EDGE[Cloudflare Workers + Pages]
+  EDGE --> NEXT[Next.js SSR Worker]
+  EDGE --> API[Platform API Worker]
+  NEXT --> API
+  API --> PHP[Render PHP 8.4 + Apache]
+  PHP --> AUTH[Neon Auth]
+  PHP --> PG[(Neon PostgreSQL)]
+  PHP --> OBJ[(Private Object Storage)]
+  API --> KV[(KV public catalogue cache)]
+  API -. optional edge metadata .-> D1[(D1 database)]
+  OBJ --> CDN[Signed/private download response]
+  CDN --> USER
+\`\`\`
+
+### Quyền sở hữu nghiệp vụ
+
+- PHP trên Render giữ xác thực, phân quyền, CSRF, Admin, nhà phát triển, kiểm duyệt, thư viện và download grant.
+- Neon PostgreSQL giữ dữ liệu nghiệp vụ và session.
+- Cloudflare Worker là edge adapter/proxy; nó chuyển tiếp cookies, Authorization và CSRF tới PHP, không bỏ qua kiểm tra quyền.
+- Next.js gọi cùng API origin. Route API là same-origin proxy để tránh lộ secrets.
+- Cloudflare Pages phục vụ static assets và Pages Functions/Advanced Mode proxy. PHP không chạy trực tiếp trên Pages hoặc Workers.
+- \`workers.dev\` và \`pages.dev\` có thể dùng khi chưa có Zone. Custom domain chỉ cấu hình sau khi tài khoản có Zone đang hoạt động và DNS thuộc quyền kiểm soát.
+
+## Database adapters — không dùng Hyperdrive
+
+### \`origin\` — mặc định production
+
+Worker gọi \`HENDY_API_ORIGIN=https://hendystore.onrender.com\`. Neon credentials chỉ nằm ở Render. Đây là chế độ production được chọn, không cần Hyperdrive.
+
+### D1 — dữ liệu edge tách biệt
+
+Worker dùng binding \`DB\` và truy vấn native SQLite/D1. D1 độc lập với Neon:
+- Dùng cho cache metadata hoặc workload edge có schema riêng.
+- Chạy \`SELECT 1\` để kiểm tra binding.
+- Không tự sao chép schema hoặc rows từ Neon.
+- Không chuyển \`DATABASE_PROVIDER\` sang D1 cho API nghiệp vụ hiện có.
+
+MySQL/MariaDB/Hyperdrive không phải runtime database adapter của Cloudflare Worker trong thiết kế này. PDO parser cũ trong PHP không đồng nghĩa mọi query PHP chạy được với MySQL.
+
+## Object Storage
+
+| Provider | Endpoint/region | Vai trò |
+|---|---|---|
+| Neon | Existing S3 endpoint and credentials | Legacy read fallback trong quá trình chuyển |
+| CloudFly | \`https://s3.cloudfly.vn\` / \`hn\` | S3-compatible provider |
+| Cloudflare R2 | \`https://<ACCOUNT_ID>.r2.cloudflarestorage.com\` / \`auto\` | Kho object ưu tiên sau khi xác minh private access |
+| Generic S3 | Endpoint/region do admin cấu hình | Provider tương thích S3 |
+
+Quy tắc chuyển:
+1. Bucket mới phải private, public access off, CORS chỉ cấp PUT cho đúng Storefront origin.
+2. Xác thực \`HeadBucket\`, upload thử object không chứa dữ liệu người dùng, \`HeadObject\`, download và SHA-256.
+3. New writes chỉ tới provider đã chọn. Read fallback Neon vẫn giữ cho objects cũ.
+4. So sánh số lượng objects, tổng bytes và checksum trước khi retire bucket Neon.
+5. Không bật public-read ACL và không cache package/quarantine/download grant ở CDN.
+
+## Workers, KV và Pages
+
+- API Worker: health, capabilities, edge proxy và R2/KV/D1 bindings.
+- KV: cache danh mục công khai không đăng nhập, TTL tối đa 30 giây. Không cache Cookie, Authorization, Admin, login, private library, upload, download hoặc write requests.
+- R2: binding native cho Worker; PHP dùng S3 API key được lưu trong Render secrets.
+- D1: binding riêng, không thay Neon.
+- Next.js SSR: \`apps/storefront-next\`, build OpenNext lên Cloudflare Workers.
+- Pages: \`cloudflare/pages/public\` và \`_worker.js\` để phục vụ static assets/proxy. Pages project riêng cần có \`pages.dev\` URL; chưa có custom domain vì chưa có Zone.
+- Queues/Durable Objects/Workers AI/Vectorize chỉ thêm khi có use case và consumer/permissions; không khai báo binding chết.
+
+## Trust & Safety
+
+- PHP \`features/security.php\` thực hiện SHA-256 và gọi VirusTotal API từ server. \`VIRUSTOTAL_API_KEY\` chỉ ở Render Environment.
+- Package mới ở trạng thái private/pending; chỉ release có scan sạch và được Admin duyệt mới được xuất bản.
+- Không có Python package parser/antivirus worker tách riêng; không triển khai hoặc duy trì kiến trúc đó.
+- Không thực thi installer/APK do người dùng upload trên máy chủ.
+- Duy trì kiểm tra chữ ký, checksum, MIME, kích thước, quyền phân phối và trạng thái quarantine.
+
+## Tự động hóa cấu hình
+
+GitHub Actions secrets:
+- \`CLOUDFLARE_API_TOKEN\`
+- \`CLOUDFLARE_ACCOUNT_ID\`
+- \`CF_OBJECT_STORAGE_ACCESS_KEY_ID\` và \`CF_OBJECT_STORAGE_SECRET_ACCESS_KEY\` khi Worker cần S3 API.
+- \`CF_PLATFORM_HEALTH_TOKEN\` nếu bật internal health control.
+
+GitHub Actions variables:
+- \`CF_CREATE_R2\` / \`CF_R2_BUCKET_NAME\` sau khi bucket được bảo vệ private.
+- \`CF_CREATE_KV\` / \`CF_KV_NAMESPACE_NAME\`.
+- \`CF_CREATE_D1\` / \`CF_D1_DATABASE_NAME\`.
+- \`CF_DATABASE_PROVIDER=origin\`.
+- \`CF_OBJECT_STORAGE_PROVIDER=r2\` sau khi binding đã được cấu hình.
+- \`CF_R2_PRIVATE_ACCESS_CONFIRMED=true\` chỉ sau khi xác minh public access đã tắt.
+
+Workflow \`Deploy HendyStore platform targets\` chỉ được kích hoạt thủ công. Workflow không xóa resource, không migrate dữ liệu Neon và không ghi đè secret đang tồn tại.
+
+## Rollout gates
+
+1. Neon connection: pass — Render log đã xác nhận \`pgsql / Hendy_Store\`.
+2. R2 bucket: tắt public access, cấu hình CORS, tạo token scoped đúng bucket.
+3. Render S3 adapter: set \`OBJECT_STORAGE_PROVIDER=r2\` bằng secret an toàn, chạy HeadBucket và upload/download thử.
+4. KV/D1: tạo resource riêng \`hendystore-catalog-cache\` và \`hendystore-edge-db\`; chạy binding probe, không nhập dữ liệu Neon.
+5. Build/test PHP, Worker TypeScript, Next/OpenNext.
+6. Deploy Worker (\`workers.dev\`), Next SSR Worker và Pages (\`pages.dev\`); kiểm tra API, Auth, Admin, catalogue và private downloads.
+7. Chỉ thêm custom domain sau khi Cloudflare Zone có sẵn.

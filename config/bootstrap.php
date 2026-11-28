@@ -548,8 +548,30 @@ function neon_storage_bucket(): string
     return (string) $config['bucket'];
 }
 
+function object_storage_config_diagnostics(): array
+{
+    try {
+        $provider = object_storage_provider();
+    } catch (Throwable $error) {
+        return ['provider' => 'invalid', 'missing' => [], 'sdk_available' => class_exists(\Aws\S3\S3Client::class)];
+    }
+    $keys = $provider === 'neon'
+        ? ['AWS_ENDPOINT_URL_S3', 'AWS_REGION', 'NEON_STORAGE_BUCKET', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
+        : ['OBJECT_STORAGE_ENDPOINT', 'OBJECT_STORAGE_REGION', 'OBJECT_STORAGE_BUCKET', 'OBJECT_STORAGE_ACCESS_KEY_ID', 'OBJECT_STORAGE_SECRET_ACCESS_KEY'];
+    $missing = [];
+    foreach ($keys as $key) {
+        if (env_value($key) === null) $missing[] = $key;
+    }
+    return [
+        'provider' => $provider,
+        'missing' => $missing,
+        'sdk_available' => class_exists(\Aws\S3\S3Client::class),
+    ];
+}
+
 function neon_storage_probe(): bool
 {
+    $diagnostics = object_storage_config_diagnostics();
     try {
         neon_s3_client()->headBucket(['Bucket' => neon_storage_bucket()]);
         return true;
@@ -557,7 +579,11 @@ function neon_storage_probe(): bool
         $details = $error instanceof \Aws\Exception\AwsException
             ? ' code=' . (string) $error->getAwsErrorCode() . ' status=' . (string) $error->getStatusCode()
             : '';
-        error_log('[Hendy Store storage] Object Storage probe failed: ' . get_class($error) . $details);
+        $missing = implode(',', $diagnostics['missing'] ?? []);
+        error_log('[Hendy Store storage] probe_failed provider=' . (string)($diagnostics['provider'] ?? 'unknown')
+            . ' missing_config=' . ($missing !== '' ? $missing : 'none')
+            . ' sdk_available=' . (!empty($diagnostics['sdk_available']) ? 'yes' : 'no')
+            . ' exception=' . get_class($error) . $details);
         return false;
     }
 }

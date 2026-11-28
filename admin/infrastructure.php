@@ -36,23 +36,22 @@ header('Cache-Control: no-store, private');
 <div class="infra-grid">
 <section class="infra-card"><span class="infra-kicker">DATABASE ROUTER</span><h2>Database & Query Engine</h2><p class="infra-muted">Chọn đúng engine ở từng runtime. Neon PostgreSQL hiện vẫn là nguồn dữ liệu HendyStore production.</p>
 <div class="infra-row"><span>PostgreSQL / Neon</span><span class="infra-badge ok">Nguồn dữ liệu hiện tại</span></div>
-<div class="infra-row"><span>MySQL / MariaDB</span><span class="infra-badge warn">PDO parser + adapter; chưa tương thích toàn bộ nghiệp vụ PHP</span></div>
 <div class="infra-row"><span>SQLite local / Render disk</span><span class="infra-badge warn">Dev / một instance có persistent disk</span></div>
-<div class="infra-row"><span>Cloudflare D1</span><span class="infra-badge warn">Worker binding; cần migration riêng</span></div>
-<div class="infra-row"><span>Cloudflare Hyperdrive</span><span class="infra-badge warn">Kết nối PostgreSQL/MySQL từ Workers</span></div>
+<div class="infra-row"><span>Cloudflare D1</span><span class="infra-badge warn">Binding riêng cho edge data; không thay Neon</span></div>
+<div class="infra-row"><span>Cloudflare Workers → Neon</span><span class="infra-badge ok">Gọi PHP origin trên Render · không cần Hyperdrive</span></div>
 <div class="infra-actions"><button class="infra-btn alt" type="button" data-copy="database">Sao chép mẫu cấu hình DB</button></div></section>
 
 <section class="infra-card"><span class="infra-kicker">OBJECT STORAGE ROUTER</span><h2>Storage Providers</h2><p class="infra-muted">Tệp được lưu private. Neon, CloudFly, R2 và endpoint S3 chung dùng adapter; fallback đọc Neon được giữ trong giai đoạn di chuyển.</p>
 <div class="infra-row"><span>Neon Object Storage</span><span class="infra-badge ok">Legacy / fallback</span></div>
 <div class="infra-row"><span>CloudFly S3</span><span class="infra-badge warn">Cấu hình Render; cần probe thực tế</span></div>
-<div class="infra-row"><span>Cloudflare R2</span><span class="infra-badge warn">Adapter trong nhánh nâng cấp</span></div>
+<div class="infra-row"><span>Cloudflare R2</span><span class="infra-badge warn">Bucket hendy-store · khóa public, cấu hình CORS và kiểm tra S3 trước cutover</span></div>
 <div class="infra-row"><span>Generic S3</span><span class="infra-badge warn">Adapter trong nhánh nâng cấp</span></div>
 <div class="infra-actions"><button class="infra-btn alt" type="button" data-copy="cloudfly">Mẫu CloudFly</button><button class="infra-btn alt" type="button" data-copy="r2">Mẫu R2</button></div></section>
 
 <section class="infra-card"><span class="infra-kicker">RUNTIME</span><h2>Render & Cloudflare</h2><p class="infra-muted">Một bộ mã nguồn, nhiều adapter triển khai. Không tự ghi secret vào tài khoản khi chưa có API token và quyền phù hợp.</p>
 <div class="infra-row"><span>Render / PHP 8.4 API</span><span class="infra-badge ok">Origin hiện tại</span></div>
 <div class="infra-row"><span>Render / Next.js Docker</span><span class="infra-badge warn">Blueprint riêng, chưa tạo service</span></div>
-<div class="infra-row"><span>Cloudflare Workers API</span><span class="infra-badge warn">Source + Hyperdrive/D1/R2 adapter</span></div>
+<div class="infra-row"><span>Cloudflare Workers API</span><span class="infra-badge warn">Edge API → Render PHP/Neon + R2/KV/D1 bindings</span></div>
 <div class="infra-row"><span>Cloudflare Workers / Next SSR</span><span class="infra-badge warn">OpenNext build, cần account binding</span></div>
 <div class="infra-row"><span>Cloudflare Pages</span><span class="infra-badge warn">Legacy static/proxy source</span></div>
 <div class="infra-actions"><button class="infra-btn alt" id="checkHealth" type="button">Kiểm tra API origin</button><span class="infra-badge" id="originHealth">Chưa kiểm tra</span></div></section>

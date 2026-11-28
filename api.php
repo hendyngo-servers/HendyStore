@@ -203,16 +203,27 @@ try {
             . ' products=' . $runtimeProductCount);
 
         $storage = neon_storage_probe();
+        $databaseStatus = $driver === 'pgsql' ? 'postgresql' : $driver;
+        $components = [
+            'database' => 'healthy',
+            'storage' => $storage ? 'healthy' : 'unavailable',
+        ];
         $adminCount = (int) $db->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
         if ($adminCount < 1) {
-            json_response(['ok' => false, 'status' => 'setup_required', 'error' => 'Configure ADMIN_EMAIL and ADMIN_PASSWORD before opening the store.'], 503);
+            json_response(['ok' => false, 'status' => 'setup_required', 'database' => $databaseStatus, 'components' => $components, 'error' => 'Configure ADMIN_EMAIL and ADMIN_PASSWORD before opening the store.'], 503);
         }
         if (!$storage) {
-            json_response(['ok' => false, 'status' => 'storage_unavailable', 'error' => 'Object Storage đang chọn không phản hồi. Kiểm tra endpoint, bucket và credentials trong Render.'], 503);
+            json_response([
+                'ok' => false,
+                'status' => 'storage_unavailable',
+                'database' => $databaseStatus,
+                'components' => $components,
+                'error' => 'Object Storage đang chọn không phản hồi. Kiểm tra endpoint, bucket và credentials trong Render.',
+            ], 503);
         }
         $published = (int) $db->query("SELECT COUNT(*) FROM products WHERE status = 'published'")->fetchColumn();
         header('Cache-Control: no-store');
-        json_response(['ok' => true, 'status' => 'healthy', 'service' => 'hendy-store', 'database' => $driver === 'pgsql' ? 'postgresql' : $driver, 'storage' => neon_object_storage_enabled() ? ('s3-compatible:' . object_storage_provider()) : 'unavailable', 'auth' => env_value('NEON_AUTH_BASE_URL') !== null, 'administrators' => $adminCount, 'publishedProducts' => $published]);
+        json_response(['ok' => true, 'status' => 'healthy', 'service' => 'hendy-store', 'database' => $databaseStatus, 'storage' => neon_object_storage_enabled() ? ('s3-compatible:' . object_storage_provider()) : 'unavailable', 'components' => $components, 'auth' => env_value('NEON_AUTH_BASE_URL') !== null, 'administrators' => $adminCount, 'publishedProducts' => $published]);
     }
     if ($action === 'download_file') {
         serve_package($db);

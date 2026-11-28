@@ -44,18 +44,13 @@ jobs:
           CF_CREATE_R2: ${{ vars.CF_CREATE_R2 }}
           CF_R2_BUCKET_NAME: ${{ vars.CF_R2_BUCKET_NAME }}
           CF_R2_LOCATION: ${{ vars.CF_R2_LOCATION }}
+          CF_R2_PRIVATE_ACCESS_CONFIRMED: ${{ vars.CF_R2_PRIVATE_ACCESS_CONFIRMED }}
           CF_CREATE_KV: ${{ vars.CF_CREATE_KV }}
           CF_KV_NAMESPACE_NAME: ${{ vars.CF_KV_NAMESPACE_NAME }}
           CF_KV_NAMESPACE_ID: ${{ vars.CF_KV_NAMESPACE_ID }}
           CF_CREATE_D1: ${{ vars.CF_CREATE_D1 }}
           CF_D1_DATABASE_NAME: ${{ vars.CF_D1_DATABASE_NAME }}
           CF_D1_LOCATION: ${{ vars.CF_D1_LOCATION }}
-          CF_HYPERDRIVE_NAME: ${{ vars.CF_HYPERDRIVE_NAME }}
-          CF_HYPERDRIVE_ID: ${{ vars.CF_HYPERDRIVE_ID }}
-          CF_HYPERDRIVE_CONNECTION_STRING: ${{ secrets.CF_HYPERDRIVE_CONNECTION_STRING }}
-          CF_MYSQL_HYPERDRIVE_NAME: ${{ vars.CF_MYSQL_HYPERDRIVE_NAME }}
-          CF_MYSQL_HYPERDRIVE_ID: ${{ vars.CF_MYSQL_HYPERDRIVE_ID }}
-          CF_MYSQL_HYPERDRIVE_CONNECTION_STRING: ${{ secrets.CF_MYSQL_HYPERDRIVE_CONNECTION_STRING }}
           CF_DATABASE_PROVIDER: ${{ vars.CF_DATABASE_PROVIDER }}
           CF_OBJECT_STORAGE_PROVIDER: ${{ vars.CF_OBJECT_STORAGE_PROVIDER }}
         run: node scripts/provision-cloudflare-resources.mjs
