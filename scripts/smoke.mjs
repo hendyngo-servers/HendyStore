@@ -54,7 +54,7 @@ assert.ok(workerSource.includes('!request.headers.has("Authorization")'), "KV ca
 assert.ok(workerSource.includes('!request.headers.has("Cookie")'), "KV cache must exclude cookie-bearing requests");
 
 const workerDatabase = await readFile("cloudflare/platform-worker/src/database.ts", "utf8");
-for (const token of ["HYPERDRIVE", "MYSQL_HYPERDRIVE", "env.DB", "prepare", "SELECT 1"]) {
+for (const token of ["origin", "env.DB", "prepare", "SELECT 1"]) {
   assert.ok(workerDatabase.includes(token), "Missing Cloudflare database adapter: " + token);
 }
 const workerStorage = await readFile("cloudflare/platform-worker/src/storage.ts", "utf8");
@@ -62,11 +62,16 @@ for (const token of ["cloudfly", "r2", "s3", "createPresignedPutUrl", "HeadBucke
   assert.ok(workerStorage.includes(token), "Missing Worker object storage adapter: " + token);
 }
 const provisionSource = await readFile("scripts/provision-cloudflare-resources.mjs", "utf8");
-for (const token of ["CF_CREATE_R2", "CF_CREATE_KV", "CF_CREATE_D1", "HYPERDRIVE", "MYSQL_HYPERDRIVE", "refusing to overwrite it"]) {
+for (const token of ["CF_CREATE_R2", "CF_CREATE_KV", "CF_CREATE_D1", "CF_R2_PRIVATE_ACCESS_CONFIRMED", "origin", "refusing to overwrite it"]) {
   assert.ok(provisionSource.includes(token), "Missing explicit Cloudflare provisioning safety gate: " + token);
 }
 assert.ok(!provisionSource.includes("r2 bucket delete"), "Provisioning must never delete R2 buckets");
+assert.ok(!provisionSource.toLowerCase().includes("hyperdrive"), "Provisioning must not configure Hyperdrive");
+assert.ok(!workerDatabase.toLowerCase().includes("hyperdrive"), "Worker database adapter must not use Hyperdrive");
+assert.ok(!workerDatabase.includes("mysql2"), "Worker database adapter must not include MySQL");
 assert.ok(!provisionSource.includes("d1 delete"), "Provisioning must never delete D1 databases");
+const architecture = await readFile("docs/architecture/target-architecture.md", "utf8");
+assert.ok(!/Azure Front Door|Azure SQL|Azure Blob|Python package worker|Hyperdrive/i.test(architecture), "Target architecture must not reference retired Azure or worker components");
 const nextPage = await readFile("apps/storefront-next/src/app/page.tsx", "utf8");
 const nextDetail = await readFile("apps/storefront-next/src/app/apps/[slug]/page.tsx", "utf8");
 const nextApi = await readFile("apps/storefront-next/src/lib/api.ts", "utf8");
