@@ -465,7 +465,7 @@ function object_storage_connection_config(string $provider): array
         ? '/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/'
         : '/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/';
     if ($bucket === '' || !preg_match($bucketPattern, $bucket)) {
-        throw new RuntimeException('Object Storage bucket name is invalid for the selected provider.');
+        throw new RuntimeException('OBJECT_STORAGE_BUCKET is invalid for the selected provider.');
     }
     if ($accessKey === '' || $secretKey === '' || $region === '') {
         throw new RuntimeException(ucfirst($provider) . ' Object Storage credentials are not fully configured.');
