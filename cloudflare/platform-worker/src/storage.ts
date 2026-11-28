@@ -16,7 +16,8 @@ export function resolveStorageProvider(env: Env): StorageProvider {
 
 function s3Options(env: Env): { endpoint: string; region: string; bucket: string; accessKeyId: string; secretAccessKey: string; sessionToken?: string; pathStyle: boolean } {
   const provider = resolveStorageProvider(env);
-  let endpoint = String(env.OBJECT_STORAGE_ENDPOINT || "").replace(/\/$/, "");
+  const rawEndpoint = String(env.OBJECT_STORAGE_ENDPOINT || "");
+  let endpoint = rawEndpoint.endsWith("/") ? rawEndpoint.slice(0, -1) : rawEndpoint;
   let region = String(env.OBJECT_STORAGE_REGION || "");
   if (provider === "cloudfly") {
     endpoint ||= "https://s3.cloudfly.vn";
@@ -70,7 +71,8 @@ export async function probeStorage(env: Env): Promise<{ provider: StorageProvide
   const provider = resolveStorageProvider(env);
   if (provider === "neon") {
     // Neon is probed by the PHP origin so the check uses its real server-side secrets.
-    const origin = String(env.HENDY_API_ORIGIN || "").replace(/\\/$/, "");
+    const rawOrigin = String(env.HENDY_API_ORIGIN || "");
+    const origin = rawOrigin.endsWith("/") ? rawOrigin.slice(0, -1) : rawOrigin;
     if (!origin.startsWith("https://")) return { provider, ok: false };
     const response = await fetch(origin + "/api.php?action=health", { headers: { Accept: "application/json" } });
     if (!response.ok) return { provider, ok: false };
