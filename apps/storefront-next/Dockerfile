@@ -1,6 +1,6 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
+COPY package.json ./
 RUN npm install --no-audit --no-fund
 
 FROM node:22-alpine AS builder
@@ -8,7 +8,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN DEPLOY_TARGET=render npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
