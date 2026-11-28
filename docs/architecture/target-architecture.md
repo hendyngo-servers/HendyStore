@@ -1,6 +1,6 @@
 # HendyStore target architecture — unified Cloudflare + Render + Neon
 
-> Architecture proposal in PR #3. These diagrams do not mean Cloudflare, Azure, Nginx, Elasticsearch, Redis or parser workers are deployed.
+> Architecture proposal in PR #4. These diagrams do not mean Cloudflare, Azure, Nginx, Elasticsearch, Redis or parser workers are deployed.
 
 ## 1. Architecture decision
 
