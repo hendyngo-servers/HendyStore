@@ -80,7 +80,7 @@ header('Cache-Control: no-store, private');
 <span class="dev-kicker">RELEASE SECURITY</span><h2>Kiểm tra phát hành</h2>
 <p>Gói tải được upload lên bucket riêng bằng Presigned URL. Server tính SHA-256, đối chiếu tính toàn vẹn và gọi VirusTotal khi đã cấu hình khóa.</p>
 <div class="dev-note">Không đưa mật khẩu, token API hoặc chứng chỉ ký số riêng tư lên website. Gói chỉ được gửi duyệt khi trạng thái quét là CLEAN; thiếu khóa quét sẽ khóa xuất bản.</div>
-<div class="dev-state" id="uploadStatus" style="margin-top:14px">Chưa có gói tải nào.</div>
+<div class="dev-state" id="uploadStatus" style="margin-top:14px">Chưa có gói tải nào.</div><button class="dev-button subtle" id="refreshPackageScan" type="button" hidden style="margin-top:10px">Kiểm tra lại kết quả quét & gửi duyệt</button>
 </section>
 
 <section class="dev-card dev-card-full" id="releaseCard" hidden>
