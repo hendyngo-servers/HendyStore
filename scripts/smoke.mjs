@@ -37,6 +37,17 @@ for (const token of [
   assert.ok(functionSource.includes(token), "Missing Neon service integration: " + token);
 }
 
+const dataApiMigration = await readFile("database/migrations/20261128_public_catalog_data_api.sql", "utf8");
+for (const token of [
+  "api_public_catalog",
+  "security_barrier = true",
+  "GRANT SELECT ON TABLE public.api_public_catalog TO anonymous, authenticated",
+]) {
+  assert.ok(dataApiMigration.includes(token), "Missing least-privilege Data API migration: " + token);
+}
+assert.ok(!dataApiMigration.includes("GRANT SELECT ON ALL TABLES"), "Data API must not receive blanket table grants");
+assert.ok(!dataApiMigration.includes("download_url"), "Public catalogue view must not expose package URLs");
+
 const browserSource = await readFile("src/neon-browser.js", "utf8");
 for (const token of [
   "@neondatabase/auth",
@@ -46,10 +57,14 @@ for (const token of [
   "signIn.social",
   "signInGoogle",
   "googleOAuthEnabled",
+  "getAnonymousToken",
+  "listPublicCatalog",
+  "api_public_catalog",
+  "config.dataApiUrl",
   "subscribe(sealed)",
   "renew()",
 ]) {
   assert.ok(browserSource.includes(token), "Missing browser integration: " + token);
 }
 
-console.log("Neon source smoke test passed: browser build, email/social Auth, account menu, Object Storage, Functions, AI Gateway and Realtime.");
+console.log("Neon source smoke test passed: Auth, least-privilege Data API catalogue, Object Storage, Functions, AI Gateway and Realtime.");
