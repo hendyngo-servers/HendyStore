@@ -59,11 +59,15 @@ Các công nghệ dưới đây là lựa chọn nâng cấp, không phải thà
 
 ## Cloudflare Workers và Pages
 
-PHP/Apache không chạy trực tiếp trên Workers/Pages. Mô hình hiện tại là Cloudflare làm edge proxy/CDN, PHP vẫn chạy tại Render hoặc VPS:
-- Worker reverse proxy: cloudflare/worker.js; deploy với Wrangler, đặt ORIGIN_URL là URL HTTPS của Render/VPS.
-- Pages Advanced Mode Worker: cloudflare/pages/public/_worker.js; Pages phục vụ static assets và proxy route động/PHP về ORIGIN_URL.
-- Pages output folder: cloudflare/pages/public. Chưa có bản chuyển toàn bộ PHP templates thành Pages-native; Pages không phải PHP runtime.
-- Không cache API, login, admin hoặc file tải xuống riêng tư.
+PHP/Apache và Neon PostgreSQL tiếp tục chạy trên Render. Cloudflare cung cấp lớp edge và các điểm triển khai độc lập:
+- API Worker: `cloudflare/platform-worker`, cập nhật Worker có sẵn `hendy-platform-api` tại `https://hendy-platform-api.ngogiaidy56.workers.dev`; Neon được gọi qua HTTPS Render origin, không dùng Hyperdrive.
+- Next.js SSR: `apps/storefront-next`, build bằng OpenNext và deploy thành Worker `hendystore-next` tại `https://hendystore-next.ngogiaidy56.workers.dev`. Job này chỉ chạy khi GitHub Actions variable `CF_ENABLE_NEXT_WORKER=true` và Cloudflare token có quyền Workers Admin để tạo Worker mới.
+- Pages: `cloudflare/pages/public`, project `hendystore-pages` tại `https://hendystore-pages.pages.dev`, phục vụ static assets và proxy route động/PHP về Render.
+- R2, KV và D1 được gắn bằng binding native. Health endpoint của API Worker thử R2 put/get/delete một object tạm, KV put/get/delete key tạm và D1 `SELECT 1`.
+- Tài khoản Cloudflare hiện chưa có Zone/domain tùy chỉnh; dùng `workers.dev` và `pages.dev` trước, custom domain chỉ cấu hình sau khi Zone có sẵn.
+- GitHub Actions deploy chỉ chạy thủ công qua workflow `Deploy HendyStore platform targets`; các target gồm `provision`, `worker`, `next`, `pages`, `all`.
+
+Để bật deploy CI, thêm GitHub repository secret `CLOUDFLARE_API_TOKEN` trong Settings → Secrets and variables → Actions. Account ID là giá trị công khai đã đặt trong Wrangler config, không cần lưu thành secret. Không gửi token qua chat hoặc commit vào mã nguồn.
 
 ## Neon Data API — danh mục công khai
 
