@@ -54,7 +54,7 @@ assert.ok(workerSource.includes('!request.headers.has("Authorization")'), "KV ca
 assert.ok(workerSource.includes('!request.headers.has("Cookie")'), "KV cache must exclude cookie-bearing requests");
 
 const workerDatabase = await readFile("cloudflare/platform-worker/src/database.ts", "utf8");
-for (const token of ["HYPERDRIVE", "MYSQL_HYPERDRIVE", "D1", "SELECT 1"]) {
+for (const token of ["HYPERDRIVE", "MYSQL_HYPERDRIVE", "env.DB", "prepare", "SELECT 1"]) {
   assert.ok(workerDatabase.includes(token), "Missing Cloudflare database adapter: " + token);
 }
 const workerStorage = await readFile("cloudflare/platform-worker/src/storage.ts", "utf8");
