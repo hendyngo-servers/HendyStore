@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const $ = selector => document.querySelector(selector);
-const apiBase = new URL('../api.php', document.baseURI);
+const apiBase = new URL('/api.php', window.location.origin);
 let csrfToken = '';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -40,7 +40,7 @@ async function call(action, method='GET', body=null, retryCsrf=true) {
 }
 function imageUrl(value) {
   const source = String(value || '');
-  if (source.startsWith('media:')) return '../api.php?action=media&file=' + encodeURIComponent(source.slice(6));
+  if (source.startsWith('media:')) return '/api.php?action=media&file=' + encodeURIComponent(source.slice(6));
   if (/^https:\/\//i.test(source)) return source;
   return '../' + (source || 'images/dummy.png').replace(/^\/+/, '');
 }
