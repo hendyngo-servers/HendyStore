@@ -15,13 +15,12 @@ const snippets = {
   ].join("\n"),
   r2: [
     "OBJECT_STORAGE_PROVIDER=r2",
-    "CLOUDFLARE_ACCOUNT_ID=",
-    "OBJECT_STORAGE_ENDPOINT=",
+    "CLOUDFLARE_ACCOUNT_ID=918ff2f016938fc978ed23b96505b21e",
+    "OBJECT_STORAGE_ENDPOINT=https://918ff2f016938fc978ed23b96505b21e.eu.r2.cloudflarestorage.com",
     "OBJECT_STORAGE_REGION=auto",
-    "OBJECT_STORAGE_BUCKET=",
+    "OBJECT_STORAGE_BUCKET=hendy-store",
     "OBJECT_STORAGE_ACCESS_KEY_ID=",
     "OBJECT_STORAGE_SECRET_ACCESS_KEY=",
-    "OBJECT_STORAGE_SESSION_TOKEN=",
     "OBJECT_STORAGE_FORCE_PATH_STYLE=true",
     "OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true"
   ].join("\n"),
@@ -62,7 +61,7 @@ document.addEventListener('DOMContentLoaded', authorizeInfrastructurePage);
 
 document.addEventListener('click',(event)=>{
   const button=event.target.closest('[data-copy]');
-  if(button){show(snippets[button.dataset.copy]||snippets.cloudfly);}
+  if(button){show(snippets[button.dataset.copy]||snippets.r2);}
 });
 $('#copyCurrentConfig')?.addEventListener('click',()=>copy($('#configPreview')?.textContent||''));
 $('#checkHealth')?.addEventListener('click',async()=>{
