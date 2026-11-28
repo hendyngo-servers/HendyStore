@@ -90,7 +90,7 @@ function serve_package(PDO $db): never
 function admin_upload(PDO $db): never
 {
     require_method('POST');
-    require_admin($db);
+    $admin = require_admin($db);
     require_csrf();
 
     $kind = (string) ($_POST['kind'] ?? '');
@@ -142,7 +142,16 @@ function admin_upload(PDO $db): never
             error_log('[Hendy Store upload] Package upload failed: ' . get_class($error));
             json_response(['ok' => false, 'error' => 'Không thể lưu gói cài đặt vào Neon Object Storage. Kiểm tra cấu hình bucket.'], 503);
         }
-        json_response(['ok' => true, 'data' => ['path' => 'file:' . $token, 'size' => $size, 'sha256' => hash_file('sha256', $tmp)]]);
+        $sha256 = (string)hash_file('sha256', $tmp);
+        $objectKey = 'packages/' . $token;
+        $now = date('Y-m-d H:i:s');
+        $record = $db->prepare("INSERT INTO app_security_packages(object_key,uploader_id,original_name,file_size_bytes,sha256,scan_status,created_at,updated_at)
+            VALUES(:key,:user,:name,:size,:sha,'pending',:created,:updated)
+            ON CONFLICT(object_key) DO UPDATE SET uploader_id=EXCLUDED.uploader_id,original_name=EXCLUDED.original_name,file_size_bytes=EXCLUDED.file_size_bytes,sha256=EXCLUDED.sha256,scan_status='pending',updated_at=EXCLUDED.updated_at");
+        $record->execute([':key' => $objectKey, ':user' => (int)$admin['id'], ':name' => mb_substr_safe($originalName,255), ':size' => $size, ':sha' => $sha256, ':created' => $now, ':updated' => $now]);
+        $scan = hendystore_security_scan_file($tmp, $sha256, $size);
+        hendystore_security_save_scan($db, $objectKey, $scan, $sha256, $size);
+        json_response(['ok' => true, 'data' => ['path' => 'file:' . $token, 'size' => $size, 'sha256' => $sha256, 'scan' => $scan['status'] ?? 'error']]);
     }
 
     json_response(['ok' => false, 'error' => 'Loại tệp tải lên không hợp lệ.'], 422);
@@ -213,6 +222,11 @@ try {
 
     require_once __DIR__ . '/features/api.php';
     hendystore_feature_schema($db);
+    require_once __DIR__ . '/features/security.php';
+    hendystore_security_schema($db);
+    if (hendystore_security_api($db, $action, $method)) {
+        exit;
+    }
     if (hendystore_feature_api($db, $action, $method)) {
         exit;
     }
@@ -312,6 +326,7 @@ try {
             if (!$product) {
                 json_response(['ok' => false, 'error' => 'Không tìm thấy ứng dụng.'], 404);
             }
+            hendystore_security_track_product_view($db, (int)$product['id']);
             $related = $db->prepare("SELECT * FROM products WHERE category = :category AND slug != :slug AND status = 'published' ORDER BY downloads DESC LIMIT 4");
             $related->execute([':category' => $product['category'], ':slug' => $slug]);
             json_response(['ok' => true, 'data' => present_product($product, true), 'related' => array_map('present_product', $related->fetchAll())]);
@@ -485,7 +500,7 @@ try {
             break;
 
         case 'admin_products':
-            require_admin($db);
+            $admin = require_admin($db);
             if ($method === 'GET') {
                 $rows = $db->query('SELECT * FROM products ORDER BY updated_at DESC')->fetchAll();
                 $adminRows = array_map(static function (array $product): array {
@@ -499,17 +514,24 @@ try {
             $input = request_data();
             if ($method === 'POST') {
                 $product = validate_product_input($input);
+                // A newly uploaded package must always enter the moderation queue.
+                $product[':status'] = 'pending';
+                $product[':featured'] = 0;
                 $now = date('Y-m-d H:i:s');
                 try {
-                    $stmt = $db->prepare('INSERT INTO products (slug,title,developer,category,short_description,description,version,platform,price_type,price_amount_vnd,icon,cover,screenshots_json,download_url,downloads,rating,featured,status,created_at,updated_at) VALUES (:slug,:title,:developer,:category,:short_description,:description,:version,:platform,:price_type,:price_amount_vnd,:icon,:cover,:screenshots_json,:download_url,0,:rating,:featured,:status,:created_at,:updated_at)');
+                    $sql = 'INSERT INTO products (slug,title,developer,category,short_description,description,version,platform,price_type,price_amount_vnd,icon,cover,screenshots_json,download_url,downloads,rating,featured,status,created_at,updated_at) VALUES (:slug,:title,:developer,:category,:short_description,:description,:version,:platform,:price_type,:price_amount_vnd,:icon,:cover,:screenshots_json,:download_url,0,:rating,:featured,:status,:created_at,:updated_at)';
+                    if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql') $sql .= ' RETURNING id';
+                    $stmt = $db->prepare($sql);
                     $stmt->execute($product + [':created_at' => $now, ':updated_at' => $now]);
+                    $productId = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql' ? (int)$stmt->fetchColumn() : (int)$db->lastInsertId();
                 } catch (PDOException $error) {
                     if ((string) $error->getCode() === '23000' || str_contains(strtolower($error->getMessage()), 'unique')) {
                         json_response(['ok' => false, 'error' => 'Slug này đã tồn tại. Hãy chọn slug khác.'], 409);
                     }
                     throw $error;
                 }
-                json_response(['ok' => true, 'data' => ['id' => (int) $db->lastInsertId()]], 201);
+                hendystore_security_register_release($db, $productId, (int)$admin['id'], (string)$product[':download_url']);
+                json_response(['ok' => true, 'data' => ['id' => $productId, 'status' => 'pending']], 201);
             }
             if ($method === 'PUT') {
                 $id = (int) ($input['id'] ?? 0);
@@ -517,6 +539,8 @@ try {
                     json_response(['ok' => false, 'error' => 'ID sản phẩm không hợp lệ.'], 422);
                 }
                 $product = validate_product_input($input);
+                $product[':status'] = 'pending';
+                $product[':featured'] = 0;
                 $product[':id'] = $id;
                 $product[':updated_at'] = date('Y-m-d H:i:s');
                 try {
@@ -528,7 +552,8 @@ try {
                     }
                     throw $error;
                 }
-                json_response(['ok' => true]);
+                hendystore_security_register_release($db, $id, (int)$admin['id'], (string)$product[':download_url']);
+                json_response(['ok' => true, 'data' => ['status' => 'pending']]);
             }
             if ($method === 'DELETE') {
                 $id = (int) ($input['id'] ?? 0);
