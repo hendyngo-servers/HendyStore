@@ -65,30 +65,42 @@ function appCard(p, featured) {
 async function loadProducts() {
   const grid=$('#appGrid'); if(!grid)return;
   grid.innerHTML='<div class="loading-card">Đang tải ứng dụng…</div>';
+  const filters={page:state.page,limit:18,sort:state.sort,category:state.category,query:state.query};
+  let result=null;
   try {
-    const url=new URL(api); url.searchParams.set('action','products'); url.searchParams.set('page',String(state.page)); url.searchParams.set('limit','18'); url.searchParams.set('sort',state.sort);
-    if(state.category!=='Tất cả')url.searchParams.set('category',state.category);
-    if(state.query)url.searchParams.set('q',state.query);
-    const headers={Accept:'application/json'};
+    if(!window.HendyNeon?.listPublicCatalog) throw new Error('Neon Data API client is unavailable.');
+    result=await window.HendyNeon.listPublicCatalog(filters);
+  } catch(dataApiError) {
+    // Keep the PHP API as a compatibility path while Data API connectivity is recovered.
+    console.warn('[Hendy Store] Data API catalogue fallback:', dataApiError?.message || 'request failed');
     try {
-      const token = window.HendyNeon ? await window.HendyNeon.getToken() : null;
-      if (token) headers.Authorization = 'Bearer ' + token;
-    } catch (_) {}
-    const response=await fetch(url,{headers,credentials:'same-origin'});
-    const result=await response.json();
-    if(!response.ok||!result.ok)throw new Error(result.error||'Không tải được danh sách.');
-    grid.innerHTML=(result.data||[]).map(p=>appCard(p,false)).join('');
-    state.pages=Math.max(1,Number(result.meta.pages||1));
-    $('#resultTitle').textContent=state.category==='Tất cả'?'Tất cả ứng dụng':state.category;
-    $('#resultCount').textContent=Number(result.meta.total||0).toLocaleString('vi-VN')+' kết quả';
-    $('#statApps').textContent=Number(result.meta.total||0).toLocaleString('vi-VN');
-    $('#pagination').classList.toggle('hidden',state.pages<=1);
-    $('#pageLabel').textContent=state.page+' / '+state.pages;
-    $('#prevPage').disabled=state.page<=1; $('#nextPage').disabled=state.page>=state.pages;
-    $('#emptyState').classList.toggle('hidden',(result.data||[]).length!==0);
-  } catch(error) {
-    grid.innerHTML='<div class="loading-card">'+esc(error.message)+'</div>';
+      const url=new URL(api); url.searchParams.set('action','products');
+      url.searchParams.set('page',String(state.page)); url.searchParams.set('limit','18');
+      url.searchParams.set('sort',state.sort);
+      if(state.category!=='Tất cả')url.searchParams.set('category',state.category);
+      if(state.query)url.searchParams.set('q',state.query);
+      const headers={Accept:'application/json'};
+      try {
+        const token=window.HendyNeon?await window.HendyNeon.getToken():null;
+        if(token)headers.Authorization='Bearer '+token;
+      } catch (_) {}
+      const response=await fetch(url,{headers,credentials:'same-origin'});
+      result=await response.json();
+      if(!response.ok||!result.ok)throw new Error(result.error||'Không tải được danh sách.');
+    } catch(error) {
+      grid.innerHTML='<div class="loading-card">'+esc(error.message||'Không thể tải danh mục.')+'</div>';
+      return;
+    }
   }
+  grid.innerHTML=(result.data||[]).map(p=>appCard(p,false)).join('');
+  state.pages=Math.max(1,Number(result.meta?.pages||1));
+  $('#resultTitle').textContent=state.category==='Tất cả'?'Tất cả ứng dụng':state.category;
+  $('#resultCount').textContent=Number(result.meta?.total||0).toLocaleString('vi-VN')+' kết quả';
+  $('#statApps').textContent=Number(result.meta?.total||0).toLocaleString('vi-VN');
+  $('#pagination').classList.toggle('hidden',state.pages<=1);
+  $('#pageLabel').textContent=state.page+' / '+state.pages;
+  $('#prevPage').disabled=state.page<=1; $('#nextPage').disabled=state.page>=state.pages;
+  $('#emptyState').classList.toggle('hidden',(result.data||[]).length!==0);
 }
 async function loadStore() {
   const grid=$('#featuredGrid'); if(!grid)return;
