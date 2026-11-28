@@ -49,6 +49,56 @@ $versionColumns = $db->query('PRAGMA table_info(app_versions)')->fetchAll(PDO::F
 if (!in_array('release_track', $versionColumns, true)) {
     throw new RuntimeException('App versions must store Alpha/Beta/Production tracks.');
 }
+// CloudFly S3 settings must be resolvable without making a network request.
+$storageTestKeys = [
+    'OBJECT_STORAGE_PROVIDER', 'OBJECT_STORAGE_ENDPOINT', 'OBJECT_STORAGE_REGION',
+    'OBJECT_STORAGE_BUCKET', 'OBJECT_STORAGE_ACCESS_KEY_ID', 'OBJECT_STORAGE_SECRET_ACCESS_KEY',
+    'OBJECT_STORAGE_SESSION_TOKEN', 'OBJECT_STORAGE_FORCE_PATH_STYLE',
+    'OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK', 'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY', 'AWS_ENDPOINT_URL_S3', 'AWS_REGION', 'NEON_STORAGE_BUCKET',
+    'NEON_STORAGE_FORCE_PATH_STYLE',
+];
+$storageTestOriginal = [];
+foreach ($storageTestKeys as $key) {
+    $storageTestOriginal[$key] = $_ENV[$key] ?? null;
+}
+$_ENV['OBJECT_STORAGE_PROVIDER'] = 'cloudfly';
+$_ENV['OBJECT_STORAGE_ENDPOINT'] = 'https://s3.cloudfly.vn';
+$_ENV['OBJECT_STORAGE_REGION'] = 'hn';
+$_ENV['OBJECT_STORAGE_BUCKET'] = 'hendy-test-bucket';
+$_ENV['OBJECT_STORAGE_ACCESS_KEY_ID'] = 'test-access-key';
+$_ENV['OBJECT_STORAGE_SECRET_ACCESS_KEY'] = 'test-secret-key';
+$_ENV['OBJECT_STORAGE_SESSION_TOKEN'] = '';
+$_ENV['OBJECT_STORAGE_FORCE_PATH_STYLE'] = 'true';
+$_ENV['OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK'] = 'true';
+$_ENV['AWS_ACCESS_KEY_ID'] = 'legacy-test-access';
+$_ENV['AWS_SECRET_ACCESS_KEY'] = 'legacy-test-secret';
+$_ENV['AWS_ENDPOINT_URL_S3'] = 'https://neon-test.example';
+$_ENV['AWS_REGION'] = 'us-east-2';
+$_ENV['NEON_STORAGE_BUCKET'] = 'hendy-legacy';
+$_ENV['NEON_STORAGE_FORCE_PATH_STYLE'] = 'true';
+$cloudflyConfig = object_storage_connection_config('cloudfly');
+if (object_storage_provider() !== 'cloudfly' || $cloudflyConfig['endpoint'] !== 'https://s3.cloudfly.vn'
+    || $cloudflyConfig['region'] !== 'hn' || $cloudflyConfig['bucket'] !== 'hendy-test-bucket'
+    || $cloudflyConfig['path_style'] !== true || !neon_object_storage_enabled()
+    || neon_storage_bucket() !== 'hendy-test-bucket' || !object_storage_legacy_neon_fallback_enabled()) {
+    throw new RuntimeException('CloudFly S3 configuration or legacy Neon fallback resolution failed.');
+}
+$cloudflyClient = neon_s3_client();
+if (!$cloudflyClient instanceof Aws\\S3\\S3Client) {
+    throw new RuntimeException('CloudFly provider must instantiate the AWS-compatible S3 SDK client.');
+}
+$_ENV['OBJECT_STORAGE_BUCKET'] = 'invalid.bucket.name';
+try {
+    object_storage_connection_config('cloudfly');
+    throw new RuntimeException('CloudFly bucket names with dots must be rejected.');
+} catch (RuntimeException $expected) {
+    if (!str_contains($expected->getMessage(), 'OBJECT_STORAGE_BUCKET')) throw $expected;
+}
+foreach ($storageTestOriginal as $key => $value) {
+    if ($value === null) unset($_ENV[$key]); else $_ENV[$key] = $value;
+}
+
 if (hendystore_security_stats_status(['failure' => 12]) !== 'pending') {
     throw new RuntimeException('VirusTotal engine failures must never be treated as a clean scan.');
 }
