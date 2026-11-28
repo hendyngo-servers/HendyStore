@@ -9,7 +9,7 @@ The Neon Data API for `Hendy_Store` is configured through Render variable `NEON_
 The Data API exposes one relation: `public.api_public_catalog`. It is a security-barrier view that returns only rows where `products.status = 'published'` and only these fields:
 
 - `id, slug, title, developer, category, short_description`
-- `version, platform, icon, cover, downloads, rating, featured, updated_at`
+- `version, platform, icon, cover, downloads, rating, featured, updated_at, price_type, price_amount_vnd`
 
 It deliberately excludes `download_url`, internal product status, account details, password hashes, Auth subjects, sessions, user libraries, download history, review moderation, payments, refunds, and orders.
 
