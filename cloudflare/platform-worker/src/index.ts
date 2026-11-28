@@ -100,12 +100,45 @@ async function platformHealth(env: Env): Promise<Response> {
       checks.d1 = { provider: "d1", ok: false };
     }
   }
-  try {
-    checks.storage = await probeStorage(env);
-  } catch (error) {
-    checks.storage = { ok: false, error: error instanceof Error ? error.message : "Storage probe failed." };
+  if (env.CACHE) {
+    const key = "__hendy_health__/" + crypto.randomUUID();
+    try {
+      await env.CACHE.put(key, "ok", { expirationTtl: 60 });
+      const value = await env.CACHE.get(key);
+      await env.CACHE.delete(key);
+      checks.kv = { ok: value === "ok" };
+    } catch {
+      await env.CACHE.delete(key).catch(() => undefined);
+      checks.kv = { ok: false };
+    }
   }
-  const healthy = Boolean((checks.database as { ok?: boolean })?.ok && (checks.storage as { ok?: boolean })?.ok);
+  if (env.R2) {
+    const key = "__hendy_health__/" + crypto.randomUUID() + ".txt";
+    try {
+      await env.R2.put(key, "hendy-r2-health-probe", {
+        httpMetadata: { contentType: "text/plain; charset=utf-8" }
+      });
+      const object = await env.R2.get(key);
+      const body = object ? await object.text() : null;
+      await env.R2.delete(key);
+      checks.storage = { provider: "r2", ok: body === "hendy-r2-health-probe", roundTrip: true };
+    } catch {
+      await env.R2.delete(key).catch(() => undefined);
+      checks.storage = { provider: "r2", ok: false, roundTrip: false };
+    }
+  } else {
+    try {
+      checks.storage = await probeStorage(env);
+    } catch (error) {
+      checks.storage = { ok: false, error: error instanceof Error ? error.message : "Storage probe failed." };
+    }
+  }
+  const healthy = Boolean(
+    (checks.database as { ok?: boolean })?.ok &&
+    (checks.storage as { ok?: boolean })?.ok &&
+    (!env.DB || (checks.d1 as { ok?: boolean })?.ok) &&
+    (!env.CACHE || (checks.kv as { ok?: boolean })?.ok)
+  );
   return json({ ok: healthy, service: "hendy-store-platform-worker", checks }, healthy ? 200 : 503);
 }
 
