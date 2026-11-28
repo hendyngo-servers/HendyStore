@@ -38,6 +38,55 @@ for (const token of [
 ]) {
   assert.ok(bootstrapStorageSource.includes(token), "Missing S3-compatible storage support: " + token);
 }
+const workerSource = await readFile("cloudflare/platform-worker/src/index.ts", "utf8");
+for (const token of [
+  "/api/v2/platform/health",
+  "/api/v2/platform/capabilities",
+  "Authorization",
+  "X-CSRF-Token",
+  "isPublicCatalog",
+  "expirationTtl: 30",
+]) {
+  assert.ok(workerSource.includes(token), "Missing Cloudflare Worker API behavior: " + token);
+}
+assert.ok(workerSource.includes('incoming.searchParams.get("action") === "products"'), "KV cache must be limited to the public catalogue action");
+assert.ok(workerSource.includes('!request.headers.has("Authorization")'), "KV cache must exclude authenticated requests");
+assert.ok(workerSource.includes('!request.headers.has("Cookie")'), "KV cache must exclude cookie-bearing requests");
+
+const workerDatabase = await readFile("cloudflare/platform-worker/src/database.ts", "utf8");
+for (const token of ["HYPERDRIVE", "MYSQL_HYPERDRIVE", "env.DB", "prepare", "SELECT 1"]) {
+  assert.ok(workerDatabase.includes(token), "Missing Cloudflare database adapter: " + token);
+}
+const workerStorage = await readFile("cloudflare/platform-worker/src/storage.ts", "utf8");
+for (const token of ["cloudfly", "r2", "s3", "createPresignedPutUrl", "HeadBucketCommand"]) {
+  assert.ok(workerStorage.includes(token), "Missing Worker object storage adapter: " + token);
+}
+const provisionSource = await readFile("scripts/provision-cloudflare-resources.mjs", "utf8");
+for (const token of ["CF_CREATE_R2", "CF_CREATE_KV", "CF_CREATE_D1", "HYPERDRIVE", "MYSQL_HYPERDRIVE", "refusing to overwrite it"]) {
+  assert.ok(provisionSource.includes(token), "Missing explicit Cloudflare provisioning safety gate: " + token);
+}
+assert.ok(!provisionSource.includes("r2 bucket delete"), "Provisioning must never delete R2 buckets");
+assert.ok(!provisionSource.includes("d1 delete"), "Provisioning must never delete D1 databases");
+const nextPage = await readFile("apps/storefront-next/src/app/page.tsx", "utf8");
+const nextDetail = await readFile("apps/storefront-next/src/app/apps/[slug]/page.tsx", "utf8");
+const nextApi = await readFile("apps/storefront-next/src/lib/api.ts", "utf8");
+for (const [source, token, label] of [
+  [nextPage, "force-dynamic", "live Next storefront catalogue"],
+  [nextDetail, "SoftwareApplication", "SEO structured application details"],
+  [nextDetail, "screenshots", "application screenshots"],
+  [nextDetail, "SHA-256", "public integrity checksums"],
+  [nextApi, "store_product_extras", "application extras API client"],
+]) {
+  assert.ok(source.includes(token), "Missing " + label);
+}
+const infraPage = await readFile("admin/infrastructure.php", "utf8");
+const infraClient = await readFile("admin/infrastructure.js", "utf8");
+assert.ok(infraPage.includes('id="infraWorkspace" hidden'), "Infrastructure controls must start hidden until Admin authorization");
+assert.ok(infraClient.includes("user?.role === 'admin'"), "Infrastructure page must require an Admin session");
+const platformWorkflow = await readFile(".github/workflows/deploy-platform.yml", "utf8");
+assert.ok(platformWorkflow.includes("workflow_dispatch:"), "Cloudflare deployments must be manually triggered");
+assert.ok(!/^\s+push:/m.test(platformWorkflow.split("\n").slice(0,12).join("\n")), "Cloudflare deployments must not auto-run on normal pushes");
+
 for (const [path, token] of [
   ["js/custom.261126163157.js", "response.status===419"],
   ["admin/security.js", "response.status === 419"],

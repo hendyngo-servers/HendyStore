@@ -103,6 +103,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Upload optional encrypted Worker secrets
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CF_OBJECT_STORAGE_ACCESS_KEY_ID: ${{ secrets.CF_OBJECT_STORAGE_ACCESS_KEY_ID }}
           CF_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.CF_OBJECT_STORAGE_SECRET_ACCESS_KEY }}
           CF_OBJECT_STORAGE_SESSION_TOKEN: ${{ secrets.CF_OBJECT_STORAGE_SESSION_TOKEN }}

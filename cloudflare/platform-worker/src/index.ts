@@ -29,7 +29,8 @@ function withCors(request: Request, env: Env, response: Response): Response {
 }
 
 async function proxyToPhp(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const origin = String(env.HENDY_API_ORIGIN || "").replace(/\/$/, "");
+  const rawOrigin = String(env.HENDY_API_ORIGIN || "");
+  const origin = rawOrigin.endsWith("/") ? rawOrigin.slice(0, -1) : rawOrigin;
   if (!origin.startsWith("https://")) return json({ ok: false, error: "HENDY_API_ORIGIN must be an HTTPS origin." }, 503);
   const incoming = new URL(request.url);
   const target = new URL(origin + incoming.pathname + incoming.search);

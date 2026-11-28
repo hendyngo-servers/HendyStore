@@ -13,7 +13,7 @@ async function proxy(request: NextRequest): Promise<Response> {
   const upstream = await fetch(new Request(target, {
     method: request.method,
     headers,
-    body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
+    body: ["GET", "HEAD"].includes(request.method) ? undefined : new Uint8Array(await request.arrayBuffer()),
     redirect: "manual"
   }));
   const response = new Response(upstream.body, upstream);

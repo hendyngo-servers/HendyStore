@@ -28,9 +28,21 @@ function run(args) {
 async function readConfig() { return readFile(configPath, "utf8"); }
 async function appendBinding(block, binding) {
   const current = await readConfig();
-  const escaped = binding.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const activeBinding = new RegExp("^\\s*binding\\s*=\\s*[\"\\']" + escaped + "[\"\\']\\s*$", "m");
-  if (activeBinding.test(current)) return false;
+  const lines = current.split(/\r?\n/);
+  const bindingLineIndex = lines.findIndex((line) =>
+    line.trim() === 'binding = "' + binding + '"' ||
+    line.trim() === "binding = '" + binding + "'"
+  );
+  if (bindingLineIndex >= 0) {
+    let sectionEnd = bindingLineIndex + 1;
+    while (sectionEnd < lines.length && !lines[sectionEnd].trimStart().startsWith("[[")) sectionEnd += 1;
+    const section = lines.slice(bindingLineIndex, sectionEnd).join("\n");
+    const expected = block.trim().split(/\r?\n/).slice(2).filter(Boolean);
+    if (!expected.every((line) => section.includes(line))) {
+      throw new Error("Cloudflare binding " + binding + " already points to a different resource; refusing to overwrite it.");
+    }
+    return false;
+  }
   await writeFile(configPath, current.trimEnd() + "\n\n" + block.trim() + "\n", "utf8");
   return true;
 }
@@ -66,9 +78,13 @@ if (process.env.CF_CREATE_R2 === "true") {
 const kvName = (process.env.CF_KV_NAMESPACE_NAME || "hendy-store-cache").trim();
 const kvId = (process.env.CF_KV_NAMESPACE_ID || "").trim();
 if (kvId) {
-  const block = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\\n");
+  const block = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\n");
   if (await appendBinding(block, "CACHE")) report.push("Added existing KV namespace binding CACHE.");
 } else if (process.env.CF_CREATE_KV === "true") {
+  const current = await readConfig();
+  if (current.split(/\r?\n/).some((line) => line.trim() === 'binding = "CACHE"')) {
+    throw new Error("CACHE binding already exists. Pass CF_KV_NAMESPACE_ID to attach an existing namespace instead of creating a replacement.");
+  }
   run(["kv", "namespace", "create", kvName, "--binding", "CACHE", "--update-config", "--config", configPath]);
   report.push("Created KV namespace " + kvName + " and added CACHE binding.");
 }
@@ -101,16 +117,23 @@ async function configureHyperdrive({ binding, name, id, connectionString, protoc
     return;
   }
   if (!connectionString) return;
-  if (!connectionString.toLowerCase().startsWith(protocol + "://")) throw new Error(binding + " connection string uses the wrong database protocol.");
-  const args = ["hyperdrive", "create", name, "--connection-string", connectionString];
-  run(args);
-  const entriesText = run(["hyperdrive", "list"]);
-  const lines = entriesText.split(/\\r?\\n/).filter(Boolean);
-  const match = lines.find((line) => line.includes(name));
-  const idMatch = match?.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-  if (!idMatch) throw new Error("Hyperdrive was created but its id could not be verified; add it manually before deploying.");
-  const block = ["[[hyperdrive]]", 'binding = "' + binding + '"', 'id = "' + idMatch[0] + '"'].join("\n");
-  if (await appendBinding(block, binding)) report.push("Created and bound Hyperdrive " + name + ".");
+  if (!connectionString.toLowerCase().startsWith(protocol + "://")) {
+    throw new Error(binding + " connection string uses the wrong database protocol.");
+  }
+  const current = await readConfig();
+  const escaped = binding.replace(/[.*+?^\x24{}()|[\]\\]/g, "\\$&");
+  const active = new RegExp("^\\s*binding\\s*=\\s*[\"\\']" + escaped + "[\"\\']\\s*$", "m");
+  if (active.test(current)) {
+    throw new Error("Cloudflare binding " + binding + " already exists. Pass its existing ID or reconcile it before creating a new Hyperdrive configuration.");
+  }
+  run([
+    "hyperdrive", "create", name,
+    "--connection-string", connectionString,
+    "--binding", binding,
+    "--update-config",
+    "--config", configPath
+  ]);
+  report.push("Created Hyperdrive " + name + " and added binding " + binding + ".");
 }
 await configureHyperdrive({
   binding: "HYPERDRIVE",
@@ -132,13 +155,21 @@ let updated = current;
 if (process.env.CF_DATABASE_PROVIDER) {
   const value = process.env.CF_DATABASE_PROVIDER.toLowerCase();
   if (!["none", "postgres", "mysql", "d1"].includes(value)) throw new Error("CF_DATABASE_PROVIDER must be none, postgres, mysql or d1.");
-  updated = updated.replace(/^DATABASE_PROVIDER\s*=\s*"[^"]*"$/m, 'DATABASE_PROVIDER = "' + value + '"');
+  const lines = updated.split(/\r?\n/);
+  const index = lines.findIndex((line) => line.trimStart().startsWith("DATABASE_PROVIDER ="));
+  if (index < 0) throw new Error("DATABASE_PROVIDER is missing from Worker TOML.");
+  lines[index] = 'DATABASE_PROVIDER = "' + value + '"';
+  updated = lines.join("\n");
   report.push("Selected Worker database provider " + value + ".");
 }
 if (process.env.CF_OBJECT_STORAGE_PROVIDER) {
   const value = process.env.CF_OBJECT_STORAGE_PROVIDER.toLowerCase();
   if (!["neon", "cloudfly", "r2", "s3"].includes(value)) throw new Error("CF_OBJECT_STORAGE_PROVIDER is invalid.");
-  updated = updated.replace(/^OBJECT_STORAGE_PROVIDER\s*=\s*"[^"]*"$/m, 'OBJECT_STORAGE_PROVIDER = "' + value + '"');
+  const lines = updated.split(/\r?\n/);
+  const index = lines.findIndex((line) => line.trimStart().startsWith("OBJECT_STORAGE_PROVIDER ="));
+  if (index < 0) throw new Error("OBJECT_STORAGE_PROVIDER is missing from Worker TOML.");
+  lines[index] = 'OBJECT_STORAGE_PROVIDER = "' + value + '"';
+  updated = lines.join("\n");
   report.push("Selected Worker storage provider " + value + ".");
 }
 if (updated !== current) await writeFile(configPath, updated, "utf8");
