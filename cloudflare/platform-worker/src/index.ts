@@ -28,11 +28,31 @@ function withCors(request: Request, env: Env, response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-async function proxyToPhp(request: Request, env: Env): Promise<Response> {
+async function proxyToPhp(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const origin = String(env.HENDY_API_ORIGIN || "").replace(/\/$/, "");
   if (!origin.startsWith("https://")) return json({ ok: false, error: "HENDY_API_ORIGIN must be an HTTPS origin." }, 503);
   const incoming = new URL(request.url);
   const target = new URL(origin + incoming.pathname + incoming.search);
+  const isPublicCatalog = request.method === "GET"
+    && incoming.pathname === "/api.php"
+    && incoming.searchParams.get("action") === "products"
+    && !request.headers.has("Authorization")
+    && !request.headers.has("Cookie");
+  const cacheKey = "public-catalog:" + incoming.search;
+  if (isPublicCatalog && env.CACHE) {
+    const cached = await env.CACHE.get(cacheKey);
+    if (cached !== null) {
+      return new Response(cached, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=15, s-maxage=30",
+          "X-Content-Type-Options": "nosniff",
+          "X-Hendy-Edge-Cache": "HIT"
+        }
+      });
+    }
+  }
   const headers = new Headers(request.headers);
   headers.set("X-Forwarded-Host", incoming.host);
   headers.set("X-Forwarded-Proto", "https");
@@ -46,6 +66,18 @@ async function proxyToPhp(request: Request, env: Env): Promise<Response> {
   const response = new Response(upstream.body, upstream);
   response.headers.set("Cache-Control", "no-store, private");
   response.headers.set("X-Content-Type-Options", "nosniff");
+  if (isPublicCatalog && env.CACHE && response.ok) {
+    try {
+      const payload = await response.clone().json() as { ok?: boolean };
+      if (payload?.ok === true) {
+        ctx.waitUntil(env.CACHE!.put(cacheKey, JSON.stringify(payload), { expirationTtl: 30 }));
+        response.headers.set("Cache-Control", "public, max-age=15, s-maxage=30");
+        response.headers.set("X-Hendy-Edge-Cache", "MISS");
+      }
+    } catch {
+      // Invalid or unexpected origin payloads remain private and are not cached.
+    }
+  }
   return response;
 }
 
@@ -69,7 +101,7 @@ async function platformHealth(env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") {
       return withCors(request, env, new Response(null, { status: 204 }));
@@ -88,7 +120,9 @@ export default {
           d1: Boolean(env.DB),
           postgresHyperdrive: Boolean(env.HYPERDRIVE),
           mysqlHyperdrive: Boolean(env.MYSQL_HYPERDRIVE),
-          r2: Boolean(env.R2)
+          r2: Boolean(env.R2),
+          kv: Boolean(env.CACHE),
+          eventsQueue: Boolean(env.EVENTS_QUEUE)
         }
       }));
     }
@@ -97,7 +131,7 @@ export default {
     // checks while the new Workers adapter is introduced incrementally.
     if (url.pathname === "/api.php" || url.pathname.startsWith("/api.php/")) {
       try {
-        return withCors(request, env, await proxyToPhp(request, env));
+        return withCors(request, env, await proxyToPhp(request, env, ctx));
       } catch {
         return withCors(request, env, json({ ok: false, error: "Origin API is temporarily unavailable." }, 502));
       }
