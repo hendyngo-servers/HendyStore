@@ -14,7 +14,7 @@ function notify(message) {
   window.setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
-async function call(action, method = 'GET', body = null, extra = {}) {
+async function call(action, method = 'GET', body = null, extra = {}, retryCsrf = true) {
   const url = new URL(api);
   url.searchParams.set('action', action);
   if (extra.query) Object.entries(extra.query).forEach(([key, value]) => url.searchParams.set(key, String(value)));
@@ -34,6 +34,12 @@ async function call(action, method = 'GET', body = null, extra = {}) {
   let result;
   try { result = await response.json(); }
   catch (_) { throw new Error('Máy chủ trả về dữ liệu không hợp lệ.'); }
+  if (response.status === 419 && method !== 'GET' && retryCsrf) {
+    const refreshed = await call('bootstrap', 'GET', null, {}, false);
+    state.csrf = refreshed.data?.csrfToken || '';
+    state.user = refreshed.data?.user || state.user;
+    return call(action, method, body, extra, false);
+  }
   if (!response.ok || !result.ok) throw new Error(result.error || 'Yêu cầu không thành công.');
   if (result.data?.csrfToken) state.csrf = result.data.csrfToken;
   return result;
