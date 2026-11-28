@@ -115,7 +115,7 @@ function hendystore_security_schema(PDO $db): void
     } catch (Throwable $error) {
         // Existing installations already have package-level moderation status.
     }
-    $db->exec("UPDATE app_security_packages SET moderation_status='approved' WHERE EXISTS (
+    $db->exec("UPDATE app_security_packages SET moderation_status='approved' WHERE moderation_status='pending' AND EXISTS (
         SELECT 1 FROM app_release_security s WHERE s.object_key=app_security_packages.object_key AND s.moderation_status='approved' AND s.scan_status='clean'
     )");
 
@@ -235,10 +235,16 @@ function hendystore_security_stats_status(array $stats): string
 {
     $malicious = (int)($stats['malicious'] ?? 0);
     $suspicious = (int)($stats['suspicious'] ?? 0);
-    $total = 0;
-    foreach ($stats as $value) if (is_numeric($value)) $total += (int)$value;
+    $harmless = (int)($stats['harmless'] ?? 0);
+    $undetected = (int)($stats['undetected'] ?? 0);
+    $failed = (int)($stats['failure'] ?? 0);
+    $timedOut = (int)($stats['timeout'] ?? 0) + (int)($stats['confirmed-timeout'] ?? 0);
+
+    // Fail closed: detection is a rejection; engine failures/timeouts or an
+    // empty scan remain pending and can never be treated as a clean result.
     if ($malicious > 0 || $suspicious > 0) return 'malicious';
-    return $total > 0 ? 'clean' : 'pending';
+    if ($failed > 0 || $timedOut > 0) return 'pending';
+    return ($harmless + $undetected) > 0 ? 'clean' : 'pending';
 }
 
 function hendystore_security_scan_file(string $filePath, string $sha256, int $size): array
