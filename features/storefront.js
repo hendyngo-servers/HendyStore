@@ -73,6 +73,15 @@ function renderVersions(versions) {
     '</p><small>' + escapeHtml(item.created_at || '') + '</small></article>'
   ).join('') + '</div>';
 }
+function renderIntegrity(integrity) {
+  const host = $('#storeIntegrity');
+  if (!host) return;
+  if (!integrity?.verified || !/^[a-f0-9]{64}$/.test(String(integrity.sha256 || ''))) {
+    host.textContent = 'Chưa có dữ liệu checksum công khai đã được duyệt.';
+    return;
+  }
+  host.textContent = 'SHA-256: ' + integrity.sha256 + '\\nDung lượng đã xác minh: ' + formatBytes(integrity.size) + '\\nGói đã vượt qua kiểm tra tự động và kiểm duyệt thủ công.';
+}
 function renderSpecs(specs) {
   const host = $('#storeRequirements');
   const privacy = $('#storePrivacy');
@@ -193,6 +202,7 @@ async function init() {
     renderGallery(extras.screenshots || []);
     renderVersions(extras.versions || []);
     renderSpecs(extras.specs || {});
+    renderIntegrity(extras.integrity || null);
     renderDownload(extras.versions || [], results[3].data || {});
     renderReviewStats(extras.reviewStats || {});
     renderReviews(results[2].data || []);
