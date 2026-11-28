@@ -64,3 +64,11 @@ services:
         value: "true"
       - key: MAX_UPLOAD_BYTES
         value: "209715200"
+      - key: MAX_DIRECT_UPLOAD_BYTES
+        value: "2147483648"
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+      - key: CODE_SIGNING_SERVICE_URL
+        sync: false
+      - key: CODE_SIGNING_SERVICE_TOKEN
+        sync: false
