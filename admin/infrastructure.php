@@ -41,19 +41,19 @@ header('Cache-Control: no-store, private');
 <div class="infra-row"><span>Cloudflare Workers → Neon</span><span class="infra-badge ok">Gọi PHP origin trên Render · không cần Hyperdrive</span></div>
 <div class="infra-actions"><button class="infra-btn alt" type="button" data-copy="database">Sao chép mẫu cấu hình DB</button></div></section>
 
-<section class="infra-card"><span class="infra-kicker">OBJECT STORAGE ROUTER</span><h2>Storage Providers</h2><p class="infra-muted">Tệp được lưu private. Neon, CloudFly, R2 và endpoint S3 chung dùng adapter; fallback đọc Neon được giữ trong giai đoạn di chuyển.</p>
-<div class="infra-row"><span>Neon Object Storage</span><span class="infra-badge ok">Legacy / fallback</span></div>
-<div class="infra-row"><span>CloudFly S3</span><span class="infra-badge warn">Cấu hình Render; cần probe thực tế</span></div>
-<div class="infra-row"><span>Cloudflare R2</span><span class="infra-badge warn">Bucket hendy-store · khóa public, cấu hình CORS và kiểm tra S3 trước cutover</span></div>
+<section class="infra-card"><span class="infra-kicker">OBJECT STORAGE ROUTER</span><h2>Storage Providers</h2><p class="infra-muted">Production đang ghi object mới vào Cloudflare R2 private (EU). Neon Object Storage được giữ làm read fallback cho tệp cũ; CloudFly và S3 chung là provider thay thế.</p>
+<div class="infra-row"><span>Cloudflare R2</span><span class="infra-badge ok">ACTIVE · EU · Private</span></div>
+<div class="infra-row"><span>Neon Object Storage</span><span class="infra-badge warn">Legacy read fallback</span></div>
+<div class="infra-row"><span>CloudFly S3</span><span class="infra-badge">Provider thay thế</span></div>
 <div class="infra-row"><span>Generic S3</span><span class="infra-badge warn">Adapter trong nhánh nâng cấp</span></div>
-<div class="infra-actions"><button class="infra-btn alt" type="button" data-copy="cloudfly">Mẫu CloudFly</button><button class="infra-btn alt" type="button" data-copy="r2">Mẫu R2</button></div></section>
+<div class="infra-actions"><button class="infra-btn" type="button" data-copy="r2">Mẫu R2 đang dùng</button><button class="infra-btn alt" type="button" data-copy="cloudfly">Mẫu CloudFly thay thế</button></div></section>
 
 <section class="infra-card"><span class="infra-kicker">RUNTIME</span><h2>Render & Cloudflare</h2><p class="infra-muted">Một bộ mã nguồn, nhiều adapter triển khai. Không tự ghi secret vào tài khoản khi chưa có API token và quyền phù hợp.</p>
 <div class="infra-row"><span>Render / PHP 8.4 API</span><span class="infra-badge ok">Origin hiện tại</span></div>
 <div class="infra-row"><span>Render / Next.js Docker</span><span class="infra-badge warn">Blueprint riêng, chưa tạo service</span></div>
-<div class="infra-row"><span>Cloudflare Workers API</span><span class="infra-badge warn">Edge API → Render PHP/Neon + R2/KV/D1 bindings</span></div>
-<div class="infra-row"><span>Cloudflare Workers / Next SSR</span><span class="infra-badge warn">OpenNext build, cần account binding</span></div>
-<div class="infra-row"><span>Cloudflare Pages</span><span class="infra-badge warn">Legacy static/proxy source</span></div>
+<div class="infra-row"><span>Cloudflare API Worker · hendy-platform-api</span><span class="infra-badge warn">Chờ GitHub secret và deploy thủ công</span></div>
+<div class="infra-row"><span>Next.js SSR Worker</span><span class="infra-badge warn">Cần Workers Admin để tạo Worker mới</span></div>
+<div class="infra-row"><span>Cloudflare Pages · hendystore-pages</span><span class="infra-badge warn">Chờ GitHub secret và deploy thủ công</span></div>
 <div class="infra-actions"><button class="infra-btn alt" id="checkHealth" type="button">Kiểm tra API origin</button><span class="infra-badge" id="originHealth">Chưa kiểm tra</span></div></section>
 
 <section class="infra-card"><span class="infra-kicker">SECRET MANAGEMENT</span><h2>Biến môi trường & Secrets</h2><p class="infra-muted">Biến thường có thể khai báo trong Render Blueprint/Wrangler vars. API key, password, secret access key phải dùng Render Environment, Cloudflare Secrets hoặc GitHub Actions Secrets.</p>
@@ -63,15 +63,16 @@ header('Cache-Control: no-store, private');
 <div class="infra-row"><span>GitHub Actions secrets</span><span class="infra-badge warn">Cần nhập thủ công một lần</span></div>
 <p class="infra-muted">Không có nút đọc lại secret đã lưu. Công cụ chỉ có thể kiểm tra tên biến và kết quả kết nối, không hiển thị giá trị bí mật.</p></section>
 
-<section class="infra-card infra-full"><span class="infra-kicker">GENERATED CONFIGURATION</span><h2>Mẫu biến cấu hình</h2><p class="infra-muted">Chọn mẫu rồi sao chép vào đúng môi trường. Hãy thay bucket name và Access Key bằng giá trị riêng trong dashboard của nhà cung cấp.</p><pre class="infra-code" id="configPreview">OBJECT_STORAGE_PROVIDER=cloudfly
-OBJECT_STORAGE_ENDPOINT=https://s3.cloudfly.vn
-OBJECT_STORAGE_REGION=hn
-OBJECT_STORAGE_BUCKET=
+<section class="infra-card infra-full"><span class="infra-kicker">GENERATED CONFIGURATION</span><h2>Mẫu biến cấu hình</h2><p class="infra-muted">Chọn mẫu rồi sao chép vào đúng môi trường. Hãy thay bucket name và Access Key bằng giá trị riêng trong dashboard của nhà cung cấp.</p><pre class="infra-code" id="configPreview">OBJECT_STORAGE_PROVIDER=r2
+CLOUDFLARE_ACCOUNT_ID=918ff2f016938fc978ed23b96505b21e
+OBJECT_STORAGE_ENDPOINT=https://918ff2f016938fc978ed23b96505b21e.eu.r2.cloudflarestorage.com
+OBJECT_STORAGE_REGION=auto
+OBJECT_STORAGE_BUCKET=hendy-store
 OBJECT_STORAGE_ACCESS_KEY_ID=
 OBJECT_STORAGE_SECRET_ACCESS_KEY=
 OBJECT_STORAGE_FORCE_PATH_STYLE=true
 OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true</pre>
-<div class="infra-actions"><button class="infra-btn" id="copyCurrentConfig" type="button">Sao chép cấu hình đang hiển thị</button><a class="infra-btn alt" href="https://github.com/hendyngo-servers/HendyStore/blob/main/docs/cloudfly-object-storage.md" target="_blank" rel="noopener">Hướng dẫn CloudFly ↗</a></div>
+<div class="infra-actions"><button class="infra-btn" id="copyCurrentConfig" type="button">Sao chép cấu hình đang hiển thị</button><a class="infra-btn alt" href="https://github.com/hendyngo-servers/HendyStore/blob/main/docs/architecture/target-architecture.md" target="_blank" rel="noopener">Kiến trúc R2 / Cloudflare ↗</a></div>
 <p class="infra-muted" style="margin-top:12px">Tự động tạo/binding resource trên Cloudflare yêu cầu tài khoản đã đăng nhập và API token có quyền đúng scope. Mã nguồn không được tự tạo bucket/database hoặc ghi đè secret production chỉ bằng cách mở trang này.</p>
 </section>
 </div></main><div class="toast" id="toast" role="status"></div></body></html>
