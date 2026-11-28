@@ -90,6 +90,9 @@ for (const [source, token, label] of [
 const infraPage = await readFile("admin/infrastructure.php", "utf8");
 const infraClient = await readFile("admin/infrastructure.js", "utf8");
 assert.ok(infraPage.includes('id="infraWorkspace" hidden'), "Infrastructure controls must start hidden until Admin authorization");
+assert.ok(infraPage.includes("ACTIVE · EU · Private"), "Infrastructure Center must identify production R2 as active");
+assert.ok(infraPage.includes("OBJECT_STORAGE_PROVIDER=r2"), "Infrastructure Center must default to the live R2 provider");
+assert.ok(infraClient.includes("OBJECT_STORAGE_PROVIDER=r2"), "Copy configuration must default to the live R2 provider");
 assert.ok(infraClient.includes("user?.role === 'admin'"), "Infrastructure page must require an Admin session");
 const platformWorkflow = await readFile(".github/workflows/deploy-platform.yml", "utf8");
 assert.ok(platformWorkflow.includes("workflow_dispatch:"), "Cloudflare deployments must be manually triggered");
