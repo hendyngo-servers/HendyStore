@@ -97,43 +97,50 @@ if (process.env.CF_CREATE_R2 === "true" || r2Name) {
   else report.push("R2 binding already targets " + r2Name + "; retained.");
 }
 
-// KV cache namespace: existing IDs are attached without modifying their data.
-const kvName = String(process.env.CF_KV_NAMESPACE_NAME || "hendystore-catalog-cache").trim();
+// KV cache namespace: bind the existing namespace by name, or create it only when explicitly requested.
+const kvName = String(process.env.CF_KV_NAMESPACE_NAME || "").trim();
 const kvId = String(process.env.CF_KV_NAMESPACE_ID || "").trim();
 if (kvId) {
-  const block = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\n");
-  if (await appendBinding(block, "CACHE")) report.push("Attached existing KV namespace.");
-} else if (process.env.CF_CREATE_KV === "true") {
-  const current = await readConfig();
-  if (current.split(/\r?\n/).some((line) => line.trim() === 'binding = "CACHE"')) {
-    throw new Error("CACHE binding already exists. Pass its namespace ID rather than creating a replacement.");
+  const binding = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\n");
+  if (await appendBinding(binding, "CACHE")) report.push("Attached existing KV namespace by ID.");
+} else if (kvName) {
+  let namespaces = namedItems(parseJson(run(["kv", "namespace", "list", "--json"]), "KV namespace list"));
+  let namespace = namespaces.find((item) => item.title === kvName || item.name === kvName);
+  if (!namespace && process.env.CF_CREATE_KV === "true") {
+    run(["kv", "namespace", "create", kvName]);
+    namespaces = namedItems(parseJson(run(["kv", "namespace", "list", "--json"]), "KV namespace list"));
+    namespace = namespaces.find((item) => item.title === kvName || item.name === kvName);
+    if (!namespace) throw new Error("KV namespace create completed but its ID could not be verified.");
+    report.push("Created KV namespace " + kvName + ".");
   }
-  run(["kv", "namespace", "create", kvName, "--binding", "CACHE", "--update-config", "--config", configPath]);
-  report.push("Created KV namespace " + kvName + " and added CACHE binding.");
+  if (!namespace) throw new Error("KV namespace " + kvName + " does not exist; run provision with CF_CREATE_KV=true.");
+  const id = namespace.id || namespace.namespace_id;
+  if (!id) throw new Error("KV namespace ID is missing; refusing to write an incomplete binding.");
+  const binding = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + id + '"'].join("\n");
+  if (await appendBinding(binding, "CACHE")) report.push("Bound KV namespace " + kvName + ".");
 }
 
-// D1 is optional and independent from Neon. This script never imports or edits Neon data.
-const d1Name = String(process.env.CF_D1_DATABASE_NAME || "hendystore-edge-db").trim();
+// D1 is a separate edge database. It is never imported from or dual-written to Neon.
+const d1Name = String(process.env.CF_D1_DATABASE_NAME || "").trim();
 const d1Id = String(process.env.CF_D1_DATABASE_ID || "").trim();
 if (d1Id) {
-  const block = ["[[d1_databases]]", 'binding = "DB"', 'database_name = "' + d1Name + '"', 'database_id = "' + d1Id + '"'].join("\n");
-  if (await appendBinding(block, "DB")) report.push("Attached existing D1 database " + d1Name + ".");
-} else if (process.env.CF_CREATE_D1 === "true") {
-  const databases = namedItems(parseJson(run(["d1", "list", "--json"]), "D1 database list"));
+  const binding = ["[[d1_databases]]", 'binding = "DB"', 'database_name = "' + d1Name + '"', 'database_id = "' + d1Id + '"'].join("\n");
+  if (await appendBinding(binding, "DB")) report.push("Attached D1 database by ID.");
+} else if (d1Name) {
+  let databases = namedItems(parseJson(run(["d1", "list", "--json"]), "D1 database list"));
   let database = databases.find((item) => item.name === d1Name);
-  if (!database) {
+  if (!database && process.env.CF_CREATE_D1 === "true") {
     run(["d1", "create", d1Name, "--location", process.env.CF_D1_LOCATION || "weur"]);
-    const refreshed = namedItems(parseJson(run(["d1", "list", "--json"]), "D1 database list"));
-    database = refreshed.find((item) => item.name === d1Name);
-    if (!database) throw new Error("D1 create command completed but the database ID could not be verified.");
+    databases = namedItems(parseJson(run(["d1", "list", "--json"]), "D1 database list"));
+    database = databases.find((item) => item.name === d1Name);
+    if (!database) throw new Error("D1 create completed but its ID could not be verified.");
     report.push("Created empty D1 database " + d1Name + "; no Neon data was copied.");
-  } else {
-    report.push("D1 database " + d1Name + " already exists; its contents were retained.");
   }
+  if (!database) throw new Error("D1 database " + d1Name + " does not exist; run provision with CF_CREATE_D1=true.");
   const id = database.uuid || database.database_id || database.databaseId || database.id;
   if (!id) throw new Error("D1 database ID is missing; refusing to write an incomplete binding.");
-  const block = ["[[d1_databases]]", 'binding = "DB"', 'database_name = "' + d1Name + '"', 'database_id = "' + id + '"'].join("\n");
-  if (await appendBinding(block, "DB")) report.push("Added D1 binding.");
+  const binding = ["[[d1_databases]]", 'binding = "DB"', 'database_name = "' + d1Name + '"', 'database_id = "' + id + '"'].join("\n");
+  if (await appendBinding(binding, "DB")) report.push("Bound D1 database " + d1Name + ".");
 }
 
 // Select only the direct PHP origin or a native D1 binding.
