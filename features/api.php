@@ -222,7 +222,7 @@ function hendystore_feature_download(PDO $db): never
         }
     }
     $packageUrl = (string)($version['package_url'] ?? $product['download_url'] ?? '');
-    if ($packageUrl === '' || !hendystore_feature_safe_package_url($packageUrl)) {
+    if ($packageUrl === '' || !hendystore_security_package_downloadable($db, (int)$product['id'], $packageUrl)) {
         http_response_code(404);
         exit;
     }
@@ -519,11 +519,8 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                 if (!$version) json_response(['ok' => false, 'error' => 'Phiên bản này không còn khả dụng.'], 404);
             }
             $packageUrl = (string)($version['package_url'] ?? $product['download_url'] ?? '');
-            if ($packageUrl === '' || !hendystore_feature_safe_package_url($packageUrl)) {
-                json_response(['ok' => false, 'error' => 'Chưa có gói tải hợp lệ cho thiết bị này.'], 404);
-            }
-            if (str_starts_with($packageUrl, 'file:') && !neon_storage_exists('packages/' . substr($packageUrl, 5))) {
-                json_response(['ok' => false, 'error' => 'Gói cài đặt hiện không khả dụng trong Object Storage.'], 404);
+            if ($packageUrl === '' || !hendystore_security_package_downloadable($db, (int)$product['id'], $packageUrl)) {
+                json_response(['ok' => false, 'error' => 'Phiên bản chưa vượt qua quét bảo mật/kiểm duyệt hoặc gói tải hiện không khả dụng.'], 404);
             }
             $platform = strtolower(trim((string)($input['platform'] ?? 'unknown')));
             if (!in_array($platform, ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
