@@ -128,7 +128,7 @@ function admin_upload(PDO $db): never
     }
 
     if ($kind === 'package') {
-        $allowedExtensions = ['apk','apks','xapk','zip','7z','rar','exe','msi','dmg','pkg','deb','rpm','tar','gz','pdf','appx','msix','appimage'];
+        $allowedExtensions = ['apk','apks','xapk','zip','7z','rar','exe','msi','dmg','pkg','deb','rpm','tar','gz','pdf','appx','msix','appimage','ipa'];
         $maxBytes = min(200 * 1024 * 1024, (int) env_value('MAX_UPLOAD_BYTES', (string) (200 * 1024 * 1024)));
         if (!in_array($extension, $allowedExtensions, true) || $size < 1 || $size > $maxBytes) {
             json_response(['ok' => false, 'error' => 'Gói tải phải thuộc định dạng được hỗ trợ và không vượt quá 200 MB.'], 422);
