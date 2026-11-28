@@ -10,6 +10,8 @@ export interface Env {
   MYSQL_HYPERDRIVE?: HyperdriveBinding;
   DB?: D1Database;
   R2?: R2Bucket;
+  CACHE?: KVNamespace;
+  EVENTS_QUEUE?: Queue;
 
   OBJECT_STORAGE_PROVIDER?: "neon" | "cloudfly" | "r2" | "s3";
   OBJECT_STORAGE_ENDPOINT?: string;
