@@ -169,7 +169,7 @@ try {
         try {
             app_base_url();
         } catch (Throwable $configurationError) {
-            json_response(['ok' => false, 'status' => 'configuration_required', 'error' => 'Set APP_URL to the public HTTPS domain before launch.'], 503);
+            json_response(['ok' => false, 'status' => 'configuration_required', 'error' => 'Không xác định được public HTTPS origin. Đặt APP_URL/RENDER_EXTERNAL_URL hoặc bật tự nhận diện domain qua trusted proxy.'], 503);
         }
         $db->query('SELECT 1')->fetchColumn();
 
