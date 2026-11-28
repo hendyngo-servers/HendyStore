@@ -1,17 +1,12 @@
-export interface HyperdriveBinding {
-  connectionString: string;
-}
-
 export interface Env {
+  /** HTTPS URL of the existing PHP API origin; Neon remains behind this origin. */
   HENDY_API_ORIGIN: string;
   ALLOWED_ORIGIN?: string;
-  DATABASE_PROVIDER?: "postgres" | "mysql" | "d1" | "none";
-  HYPERDRIVE?: HyperdriveBinding;
-  MYSQL_HYPERDRIVE?: HyperdriveBinding;
+  /** "origin" probes the PHP/Neon API. "d1" probes the separate Worker-local D1 database. */
+  DATABASE_PROVIDER?: "origin" | "d1";
   DB?: D1Database;
   R2?: R2Bucket;
   CACHE?: KVNamespace;
-  EVENTS_QUEUE?: Queue;
 
   OBJECT_STORAGE_PROVIDER?: "neon" | "cloudfly" | "r2" | "s3";
   OBJECT_STORAGE_ENDPOINT?: string;
