@@ -119,28 +119,31 @@ function require_csrf(): void {
 function database_url_to_pdo(string $url): array
 {
     $parts = parse_url($url);
-    if (!is_array($parts) || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['postgres', 'postgresql'], true)) {
-        throw new RuntimeException('DATABASE_URL must be a PostgreSQL URL.');
+    $scheme = strtolower((string)($parts['scheme'] ?? ''));
+    if (!is_array($parts) || !in_array($scheme, ['postgres', 'postgresql', 'mysql', 'mariadb'], true)) {
+        throw new RuntimeException('DATABASE_URL must use PostgreSQL or MySQL/MariaDB.');
     }
-    $host = (string) ($parts['host'] ?? '');
-    $database = rawurldecode(ltrim((string) ($parts['path'] ?? ''), '/'));
-    $username = rawurldecode((string) ($parts['user'] ?? ''));
-    $password = rawurldecode((string) ($parts['pass'] ?? ''));
+    $host = (string)($parts['host'] ?? '');
+    $database = rawurldecode(ltrim((string)($parts['path'] ?? ''), '/'));
+    $username = rawurldecode((string)($parts['user'] ?? ''));
+    $password = rawurldecode((string)($parts['pass'] ?? ''));
     if ($host === '' || $database === '' || $username === '') {
         throw new RuntimeException('DATABASE_URL is missing its host, database, or username.');
     }
-    $port = (int) ($parts['port'] ?? 5432);
+    $isMysql = in_array($scheme, ['mysql', 'mariadb'], true);
+    $port = (int)($parts['port'] ?? ($isMysql ? 3306 : 5432));
     if ($port < 1 || $port > 65535) {
         throw new RuntimeException('DATABASE_URL contains an invalid port.');
     }
     $query = [];
-    parse_str((string) ($parts['query'] ?? ''), $query);
-    // Force TLS and retain Neon channel binding when it is present in the pooled URL.
-    // Never log this DSN or its credentials.
-    $dsn = 'pgsql:host=' . $host . ';port=' . $port . ';dbname=' . $database . ';sslmode=require';
-    if (($query['channel_binding'] ?? '') === 'require') {
-        $dsn .= ';channel_binding=require';
+    parse_str((string)($parts['query'] ?? ''), $query);
+    // Credentials never enter logs. Require TLS on network PostgreSQL connections.
+    if ($isMysql) {
+        $dsn = 'mysql:host=' . $host . ';port=' . $port . ';dbname=' . $database . ';charset=utf8mb4';
+        return [$dsn, $username, $password];
     }
+    $dsn = 'pgsql:host=' . $host . ';port=' . $port . ';dbname=' . $database . ';sslmode=require';
+    if (($query['channel_binding'] ?? '') === 'require') $dsn .= ';channel_binding=require';
     return [$dsn, $username, $password];
 }
 
@@ -156,14 +159,14 @@ function store_db(): PDO
     $pass = env_value('DB_PASSWORD', '');
     $driver = 'sqlite';
 
-    if ($configured !== null && (str_starts_with($configured, 'postgres://') || str_starts_with($configured, 'postgresql://'))) {
+    if ($configured !== null && preg_match('#^(?:postgres|postgresql|mysql|mariadb)://#i', $configured)) {
         [$dsn, $user, $pass] = database_url_to_pdo($configured);
-        $driver = 'pgsql';
+        $driver = str_starts_with($dsn, 'mysql:') ? 'mysql' : 'pgsql';
     } elseif ($configured !== null) {
         $dsn = $configured;
         $driver = str_starts_with($dsn, 'pgsql:') ? 'pgsql' : (str_starts_with($dsn, 'mysql:') ? 'mysql' : 'sqlite');
     } elseif (env_value('APP_ENV', 'development') === 'production') {
-        throw new RuntimeException('DATABASE_URL is required in production. Configure the Neon pooled PostgreSQL connection string.');
+        throw new RuntimeException('DATABASE_URL is required in production. Configure the selected PostgreSQL or MySQL connection string.');
     } else {
         if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
             throw new RuntimeException('PDO SQLite is unavailable. Configure DATABASE_URL for PostgreSQL.');
