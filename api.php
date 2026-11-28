@@ -539,8 +539,16 @@ try {
                     json_response(['ok' => false, 'error' => 'ID sản phẩm không hợp lệ.'], 422);
                 }
                 $product = validate_product_input($input);
-                $product[':status'] = 'pending';
-                $product[':featured'] = 0;
+                $currentStmt = $db->prepare('SELECT status,download_url,featured FROM products WHERE id=:id LIMIT 1');
+                $currentStmt->execute([':id' => $id]);
+                $current = $currentStmt->fetch();
+                if (!$current) json_response(['ok' => false, 'error' => 'Không tìm thấy ứng dụng cần cập nhật.'], 404);
+
+                // Editing descriptive metadata must not unpublish an already approved
+                // release. Only a changed package URL enters a new moderation cycle.
+                $downloadChanged = !hash_equals((string)$current['download_url'], (string)$product[':download_url']);
+                $product[':status'] = $downloadChanged ? 'pending' : (string)$current['status'];
+                $product[':featured'] = $downloadChanged ? 0 : (int)$current['featured'];
                 $product[':id'] = $id;
                 $product[':updated_at'] = date('Y-m-d H:i:s');
                 try {
@@ -552,8 +560,13 @@ try {
                     }
                     throw $error;
                 }
-                hendystore_security_register_release($db, $id, (int)$admin['id'], (string)$product[':download_url']);
-                json_response(['ok' => true, 'data' => ['status' => 'pending']]);
+                if ($downloadChanged) {
+                    hendystore_security_register_release($db, $id, (int)$admin['id'], (string)$product[':download_url']);
+                }
+                json_response(['ok' => true, 'data' => [
+                    'status' => $product[':status'],
+                    'moderationRequired' => $downloadChanged,
+                ]]);
             }
             if ($method === 'DELETE') {
                 $id = (int) ($input['id'] ?? 0);
