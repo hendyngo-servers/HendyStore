@@ -9,7 +9,7 @@ function notify(message) {
   const el=$('#toast'); if(!el) return; el.textContent=message; el.classList.add('show');
   window.setTimeout(()=>el.classList.remove('show'),2800);
 }
-async function call(action, method='GET', body=null) {
+async function call(action, method='GET', body=null, retryCsrf=true) {
   const url=new URL(api); url.searchParams.set('action',action);
   const headers={Accept:'application/json'};
   if(method!=='GET'){headers['Content-Type']='application/json';if(state.csrf)headers['X-CSRF-Token']=state.csrf;}
@@ -19,7 +19,14 @@ async function call(action, method='GET', body=null) {
   } catch (_) {}
   const response=await fetch(url,{method,credentials:'same-origin',headers,body:body?JSON.stringify(body):undefined});
   let result; try{result=await response.json();}catch(_){throw new Error('Máy chủ trả về dữ liệu không hợp lệ.');}
+  if(response.status===419 && method!=='GET' && retryCsrf){
+    const refreshed=await call('bootstrap','GET',null,false);
+    state.csrf=refreshed.data?.csrfToken||'';
+    state.user=refreshed.data?.user||state.user;
+    return call(action,method,body,false);
+  }
   if(!response.ok||!result.ok)throw new Error(result.error||'Yêu cầu thất bại.');
+  if(result.data?.csrfToken)state.csrf=result.data.csrfToken;
   return result;
 }
 function renderAccount() {
