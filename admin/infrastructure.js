@@ -26,11 +26,11 @@ const snippets = {
     "OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true"
   ].join("\n"),
   database: [
-    "# Render / PHP currently uses Neon PostgreSQL",
-    "DATABASE_URL=postgresql://<role>:<password>@<host>/<database>?sslmode=require",
-    "# Cloudflare Workers use a Hyperdrive binding; keep its connection string in Cloudflare Secrets",
-    "DATABASE_PROVIDER=postgres",
-    "# Other Worker adapters: DATABASE_PROVIDER=mysql or d1"
+    "# PHP / business data stays on Neon PostgreSQL through the Render origin",
+    "# Keep DATABASE_URL only in Render Environment; never put its value in Worker vars",
+    "DATABASE_PROVIDER=origin",
+    "# Optional isolated Cloudflare D1 binding is for edge-local data only",
+    "# It is not a replica of Neon and is not the HendyStore business database"
   ].join("\n")
 };
 function show(text) { const node=$('#configPreview'); if(node)node.textContent=text; }
@@ -68,7 +68,11 @@ $('#copyCurrentConfig')?.addEventListener('click',()=>copy($('#configPreview')?.
 $('#checkHealth')?.addEventListener('click',async()=>{
  const badge=$('#originHealth');badge.textContent='Đang kiểm tra…';badge.className='infra-badge';
  try{const response=await fetch(new URL('/api.php?action=health',window.location.origin),{cache:'no-store',headers:{Accept:'application/json'}});
- const data=await response.json();badge.textContent=response.ok&&data.ok?'API Healthy':'API '+response.status+' — cần kiểm tra Render/Neon';badge.className='infra-badge '+(response.ok&&data.ok?'ok':'err');}
+ const data=await response.json();
+ const databaseOk = data.database === 'postgresql' || data.components?.database === 'healthy';
+ const storageOk = data.components?.storage === 'healthy' || (response.ok && data.ok);
+ badge.textContent = databaseOk ? (storageOk ? 'Neon DB + Storage Healthy' : 'Neon DB Healthy · Storage unavailable') : 'Database/API '+response.status+' — cần kiểm tra';
+ badge.className = 'infra-badge '+(databaseOk && storageOk ? 'ok' : (databaseOk ? 'warn' : 'err'));}
  catch{badge.textContent='Không kết nối được API origin';badge.className='infra-badge err';}
 });
 })();
