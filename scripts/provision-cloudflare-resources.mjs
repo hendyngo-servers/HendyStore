@@ -62,6 +62,17 @@ if (process.env.CF_CREATE_R2 === "true") {
   if (await appendBinding(block, "R2")) report.push("Added R2 binding to Worker configuration.");
 }
 
+// KV: attach an existing namespace ID or explicitly create a new empty namespace.
+const kvName = (process.env.CF_KV_NAMESPACE_NAME || "hendy-store-cache").trim();
+const kvId = (process.env.CF_KV_NAMESPACE_ID || "").trim();
+if (kvId) {
+  const block = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\\n");
+  if (await appendBinding(block, "CACHE")) report.push("Added existing KV namespace binding CACHE.");
+} else if (process.env.CF_CREATE_KV === "true") {
+  run(["kv", "namespace", "create", kvName, "--binding", "CACHE", "--update-config", "--config", configPath]);
+  report.push("Created KV namespace " + kvName + " and added CACHE binding.");
+}
+
 // D1: an empty D1 database is created only when explicitly selected.
 const d1Name = (process.env.CF_D1_DATABASE_NAME || "").trim();
 if (process.env.CF_CREATE_D1 === "true") {
