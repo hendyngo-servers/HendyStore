@@ -1,0 +1,31 @@
+name = "hendy-store-platform-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-28"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+HENDY_API_ORIGIN = "https://hendystore.onrender.com"
+DATABASE_PROVIDER = "postgres"
+OBJECT_STORAGE_PROVIDER = "neon"
+OBJECT_STORAGE_REGION = "auto"
+OBJECT_STORAGE_FORCE_PATH_STYLE = "true"
+LEGACY_ORIGIN_PROXY = "true"
+
+# Configure these bindings in Cloudflare after signing in.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "hendy-store-edge"
+# database_id = "<D1_DATABASE_ID>"
+#
+# [[r2_buckets]]
+# binding = "R2"
+# bucket_name = "<R2_BUCKET_NAME>"
+#
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "<POSTGRES_HYPERDRIVE_ID>"
+#
+# [[hyperdrive]]
+# binding = "MYSQL_HYPERDRIVE"
+# id = "<MYSQL_HYPERDRIVE_ID>"
