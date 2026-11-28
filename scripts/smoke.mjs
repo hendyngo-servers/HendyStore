@@ -187,4 +187,16 @@ for (const token of [
   assert.ok(browserSource.includes(token), "Missing browser integration: " + token);
 }
 
+const pagesProvision = await readFile("scripts/ensure-cloudflare-pages-project.mjs", "utf8");
+assert.ok(pagesProvision.includes("/pages/projects"), "Pages deployment must ensure its project exists first");
+assert.ok(pagesProvision.includes("hendystore-pages"), "Pages provisioning must target the dedicated HendyStore project");
+const platformWorkflow = await readFile(".github/workflows/deploy-platform.yml", "utf8");
+assert.ok(platformWorkflow.includes("workflow_dispatch:"), "Cloudflare deployments must be manual");
+for (const target of ["provision", "worker", "next", "pages", "all"]) {
+  assert.ok(platformWorkflow.includes("- " + target), "Missing Cloudflare deployment target: " + target);
+}
+assert.ok(platformWorkflow.includes("secrets.CLOUDFLARE_API_TOKEN"), "Cloudflare deployments must use an encrypted repository secret");
+assert.ok(!platformWorkflow.includes("HYPERDRIVE"), "Deployment workflow must not configure Hyperdrive");
+assert.ok(!platformWorkflow.includes("MYSQL_HYPERDRIVE"), "Deployment workflow must not configure MySQL Hyperdrive");
+
 console.log("Neon source smoke test passed: Auth, least-privilege Data API catalogue, Object Storage, Functions, AI Gateway and Realtime.");
