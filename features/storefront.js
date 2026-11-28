@@ -80,7 +80,7 @@ function renderIntegrity(integrity) {
     host.textContent = 'Chưa có dữ liệu checksum công khai đã được duyệt.';
     return;
   }
-  host.textContent = 'SHA-256: ' + integrity.sha256 + '\\nDung lượng đã xác minh: ' + formatBytes(integrity.size) + '\\nGói đã vượt qua kiểm tra tự động và kiểm duyệt thủ công.';
+  host.textContent = 'SHA-256: ' + integrity.sha256 + '\nDung lượng đã xác minh: ' + formatBytes(integrity.size) + '\nGói đã vượt qua kiểm tra tự động và kiểm duyệt thủ công.';
 }
 function renderSpecs(specs) {
   const host = $('#storeRequirements');
