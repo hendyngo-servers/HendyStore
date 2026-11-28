@@ -49,6 +49,21 @@ $versionColumns = $db->query('PRAGMA table_info(app_versions)')->fetchAll(PDO::F
 if (!in_array('release_track', $versionColumns, true)) {
     throw new RuntimeException('App versions must store Alpha/Beta/Production tracks.');
 }
+if (hendystore_security_stats_status(['failure' => 12]) !== 'pending') {
+    throw new RuntimeException('VirusTotal engine failures must never be treated as a clean scan.');
+}
+if (hendystore_security_stats_status(['timeout' => 4, 'harmless' => 20]) !== 'pending') {
+    throw new RuntimeException('VirusTotal timeouts must keep a package quarantined.');
+}
+if (hendystore_security_stats_status(['harmless' => 18, 'undetected' => 7]) !== 'clean') {
+    throw new RuntimeException('A completed scan with harmless/undetected results should be clean.');
+}
+if (hendystore_security_stats_status(['malicious' => 1, 'undetected' => 30]) !== 'malicious') {
+    throw new RuntimeException('Any malware detection must reject the package.');
+}
+if (hendystore_security_stats_status([]) !== 'pending') {
+    throw new RuntimeException('An empty VirusTotal result must remain pending.');
+}
 if (!valid_package_token(str_repeat('a', 32) . '.ipa')) {
     throw new RuntimeException('Signed iOS IPA packages should be accepted for private review.');
 }
