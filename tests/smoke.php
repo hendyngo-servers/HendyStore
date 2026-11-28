@@ -68,7 +68,6 @@ foreach ($domainEnvBefore as $key => [$wasSet, $oldValue, $processValue]) {
 $_SERVER = $serverBefore;
 
 $db=store_db();
-$db=store_db();
 [$mysqlDsn, $mysqlUser, $mysqlPassword] = database_url_to_pdo('mysql://hendy_user:secret%40value@mysql.example.test:3306/hendy_store');
 if ($mysqlDsn !== 'mysql:host=mysql.example.test;port=3306;dbname=hendy_store;charset=utf8mb4'
     || $mysqlUser !== 'hendy_user' || $mysqlPassword !== 'secret@value') {
