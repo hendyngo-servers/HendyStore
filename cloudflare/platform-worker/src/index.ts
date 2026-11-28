@@ -113,14 +113,12 @@ export default {
     if (url.pathname === "/api/v2/platform/capabilities" && request.method === "GET") {
       return withCors(request, env, json({
         ok: true,
-        databaseProviders: ["postgres", "mysql", "d1"],
-        configuredDatabaseProvider: env.DATABASE_PROVIDER || "postgres",
+        databaseProviders: ["origin", "d1"],
+        configuredDatabaseProvider: env.DATABASE_PROVIDER || "origin",
         storageProviders: ["neon", "cloudfly", "r2", "s3"],
         configuredStorageProvider: env.OBJECT_STORAGE_PROVIDER || "neon",
         bindings: {
           d1: Boolean(env.DB),
-          postgresHyperdrive: Boolean(env.HYPERDRIVE),
-          mysqlHyperdrive: Boolean(env.MYSQL_HYPERDRIVE),
           r2: Boolean(env.R2),
           kv: Boolean(env.CACHE),
           eventsQueue: Boolean(env.EVENTS_QUEUE)
