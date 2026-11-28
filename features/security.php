@@ -611,6 +611,17 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 if ($release['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$release['sha256']) || !neon_storage_exists((string)$release['object_key'])) {
                     json_response(['ok' => false, 'error' => 'Không thể xuất bản: bắt buộc có kết quả quét sạch, SHA-256 hợp lệ và gói còn tồn tại trong kho riêng tư.'], 409);
                 }
+                // A presigned PUT URL can remain valid briefly after upload. Re-hash
+                // and rescan the exact stored object at approval time to prevent
+                // an overwrite between the first scan and manual review.
+                $verified = hendystore_security_scan_object($db, (string)$release['object_key'], (string)$release['sha256'], (int)$release['package_size_bytes']);
+                if (($verified['status'] ?? '') !== 'clean' || !isset($verified['sha256']) || !hash_equals((string)$release['sha256'], (string)$verified['sha256'])) {
+                    $block = $db->prepare("UPDATE products SET status='pending',featured=0,updated_at=:now WHERE id=:id");
+                    $block->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
+                    $scanUpdate = $db->prepare('UPDATE app_release_security SET scan_status=:status,sha256=:sha,size=:size,updated_at=:now WHERE product_id=:id');
+                    $scanUpdate->execute([':status' => (string)($verified['status'] ?? 'integrity_error'), ':sha' => (string)($verified['sha256'] ?? ''), ':size' => (int)($verified['size'] ?? 0), ':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
+                    json_response(['ok' => false, 'error' => 'Gói đã thay đổi hoặc chưa vượt qua lần quét xác minh cuối. Ứng dụng vẫn bị khóa ở trạng thái chờ.'], 409);
+                }
                 if (($release['release_track'] ?? 'production') === 'production') {
                     $publish = $db->prepare("UPDATE products SET status='published',updated_at=:now WHERE id=:id");
                     $publish->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
