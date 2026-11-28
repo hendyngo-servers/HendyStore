@@ -2,7 +2,7 @@
 'use strict';
 const $ = (s, root=document) => root.querySelector(s);
 const all = (s, root=document) => Array.from(root.querySelectorAll(s));
-const state = {csrf:'', user:null, categories:[], category:'Tất cả', query:'', sort:'popular', page:1, pages:1, registration:false};
+const state = {csrf:'', user:null, categories:[], category:'Tất cả', query:'', sort:'popular', page:1, pages:1, registration:false, googleOAuthEnabled:false};
 const api = new URL('api.php', document.baseURI);
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function notify(message) {
@@ -21,6 +21,26 @@ async function call(action, method='GET', body=null) {
   let result; try{result=await response.json();}catch(_){throw new Error('Máy chủ trả về dữ liệu không hợp lệ.');}
   if(!response.ok||!result.ok)throw new Error(result.error||'Yêu cầu thất bại.');
   return result;
+}
+function renderAccount() {
+  const label=$('#accountLabel'), avatar=$('#accountAvatar'), menu=$('#accountMenu');
+  if(!label||!avatar)return;
+  const user=state.user;
+  label.textContent=user?.name||'Đăng nhập';
+  avatar.textContent=(user?.name||'H').trim().slice(0,1).toUpperCase()||'H';
+  if(menu) {
+    $('#accountMenuName').textContent=user?.name||'Tài khoản';
+    $('#accountMenuEmail').textContent=user?.email||'';
+    $('#accountAdminLink').hidden=user?.role!=='admin';
+    menu.hidden=true;
+  }
+  $('#accountButton')?.setAttribute('aria-expanded','false');
+}
+function updateAuthControls() {
+  const visible=!!(state.googleOAuthEnabled&&state.neonAuthEnabled&&($('.auth-tab.active')?.dataset.authMode||'login')==='login');
+  const button=$('#googleSignInButton'), divider=$('#authDivider');
+  if(button)button.hidden=!visible;
+  if(divider)divider.hidden=!visible;
 }
 function assetUrl(value) {
   if(!value)return 'images/dummy.png';
@@ -78,8 +98,11 @@ async function loadStore() {
     state.categories=result.data.categories||[];
     state.registration=!!(result.data.neonAuthPublicSignup || result.data.registrationEnabled);
     state.neonAuthEnabled=!!result.data.neonAuthEnabled;
+    state.googleOAuthEnabled=!!result.data.googleOAuthEnabled;
     state.realtimeEnabled=!!result.data.realtimeEnabled;
     renderCategories();
+    renderAccount();
+    updateAuthControls();
     grid.innerHTML=(result.data.featured||[]).map(p=>appCard(p,true)).join('')||'<div class="loading-card">Chưa có ứng dụng nổi bật.</div>';
     if(state.user){$('#accountLabel').textContent=state.user.name;$('#accountAvatar').textContent=(state.user.name||'H').slice(0,1).toUpperCase();}
     if(!state.registration){const registerButton=$('[data-auth-mode="register"]');if(registerButton)registerButton.hidden=true;}
@@ -97,6 +120,7 @@ function authMode(mode) {
   $('#authTitle').textContent=mode==='register'?'Tạo tài khoản':'Chào mừng trở lại';
   $('#authSubmit').textContent=mode==='register'?'Tạo tài khoản →':'Đăng nhập →';
   $('#authMessage').textContent='';
+  updateAuthControls();
 }
 function showAuth() {
   const dialog=$('#authDialog');
@@ -119,7 +143,38 @@ function bindEvents() {
   $('#nextPage')?.addEventListener('click',()=>{state.page=Math.min(state.pages,state.page+1);loadProducts();});
   $('#clearFilters')?.addEventListener('click',()=>{state.query='';state.category='Tất cả';state.page=1;$('#searchInput').value='';renderCategories();loadProducts();});
   $('#themeToggle')?.addEventListener('click',()=>document.body.classList.toggle('dark-theme'));
-  $('#accountButton')?.addEventListener('click',showAuth);
+  $('#accountButton')?.addEventListener('click',()=>{
+    if(!state.user){showAuth();return;}
+    const menu=$('#accountMenu');if(!menu)return;
+    menu.hidden=!menu.hidden;
+    $('#accountButton').setAttribute('aria-expanded',String(!menu.hidden));
+  });
+  document.addEventListener('click',event=>{
+    if(event.target.closest('.header-actions'))return;
+    const menu=$('#accountMenu');if(menu)menu.hidden=true;
+    $('#accountButton')?.setAttribute('aria-expanded','false');
+  });
+  $('#accountSignOut')?.addEventListener('click',async()=>{
+    const button=$('#accountSignOut');button.disabled=true;
+    try {
+      try{await call('logout','POST',{});}catch(_){}
+      if(window.HendyNeon){try{await window.HendyNeon.signOut();}catch(_){}}
+      state.user=null;renderAccount();notify('Bạn đã đăng xuất.');
+    } catch(error) {notify(error.message||'Không thể đăng xuất.');}
+    finally {button.disabled=false;}
+  });
+  $('#googleSignInButton')?.addEventListener('click',async()=>{
+    const button=$('#googleSignInButton'), message=$('#authMessage');
+    if(!window.HendyNeon){message.textContent='Thành phần Neon Auth chưa sẵn sàng.';return;}
+    button.disabled=true;message.textContent='Đang chuyển đến Google…';
+    try {
+      await window.HendyNeon.signInGoogle(new URL('/',window.location.origin).toString());
+      message.textContent='Đang hoàn tất đăng nhập…';
+    } catch(error) {
+      message.textContent=error.message||'Đăng nhập Google thất bại.';
+      button.disabled=false;
+    }
+  });
   $('#closeAuth')?.addEventListener('click',()=>$('#authDialog').close());
   all('.auth-tab').forEach(button=>button.addEventListener('click',()=>authMode(button.dataset.authMode)));
   $('#authForm')?.addEventListener('submit',async event=>{
@@ -139,7 +194,7 @@ function bindEvents() {
         state.user=result.data.user;
         state.csrf=result.data.csrfToken||state.csrf;
       }
-      $('#accountLabel').textContent=state.user.name;$('#accountAvatar').textContent=state.user.name.slice(0,1).toUpperCase();
+      renderAccount();
       $('#authDialog').close();notify(mode==='login'?'Đăng nhập thành công.':'Tài khoản đã được tạo.');
     } catch(error) {$('#authMessage').textContent=error.message;}
   });

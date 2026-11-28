@@ -12,7 +12,7 @@ Nền tảng App Store miễn phí, ưu tiên triển khai đa môi trường.
 | Backend / API | PHP 8.4 + Apache, PDO | API nghiệp vụ tại api.php; chạy Docker trên Render hoặc PHP hosting/VPS |
 | Frontend | HTML, CSS, JavaScript | Giao diện hiện tại; responsive, SEO cơ bản; chưa phải React/Next.js |
 | Build tooling | Node.js 22, npm, esbuild | Build browser bundle tích hợp Neon |
-| Authentication | Email/password trong PostgreSQL + Neon Auth (Better Auth/JWKS) | Role customer/admin; cookie HttpOnly, session, CSRF; Neon Auth cần cấu hình biến môi trường |
+| Authentication | Neon Auth (Managed Better Auth/JWKS) + PHP session fallback cho Admin | Email/password; Google OAuth UI có feature flag; role customer/admin; HttpOnly, CSRF |
 | Security | PDO prepared statements, CSRF, rate limit, HTTPS, secure cookies | Đã có trong code; tiếp tục tăng cường WAF và giám sát |
 | Malware scanning | Chưa tích hợp VirusTotal | Cần thêm API key, job quét riêng và trạng thái quarantine trước khi public package |
 | Hosting | Render Web Service + Docker | main Auto Deploy; Neon là database và object storage |
@@ -39,6 +39,7 @@ Các công nghệ dưới đây là lựa chọn nâng cấp, không phải thà
 - Quản lý phiên bản/changelog, ảnh chụp màn hình, yêu cầu hệ thống, thư viện, đánh giá kiểm duyệt, thông báo cập nhật và lịch sử tải.
 - Download grant dùng một lần và hết hạn 10 phút.
 - CSRF, rate limit, PDO prepared statements, secure cookies, JWT/JWKS validation.
+- Google sign-in uses Neon Managed Better Auth social OAuth; the button stays hidden until a production OAuth client is configured and GOOGLE_OAUTH_ENABLED=true. The dedicated /admin login remains email/password and does not inherit Admin role from a matching Google email.
 
 ## Render / Docker / PHP hosting
 

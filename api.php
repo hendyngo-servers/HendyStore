@@ -225,6 +225,7 @@ try {
                 'realtimeUrl' => env_value('NEON_REALTIME_URL'),
                 'functionUrl' => env_value('NEON_STORE_FUNCTION_URL'),
                 'authEnabled' => env_value('NEON_AUTH_BASE_URL') !== null,
+                'googleOAuthEnabled' => env_bool('GOOGLE_OAUTH_ENABLED', false) && env_value('NEON_AUTH_BASE_URL') !== null,
                 'realtimeEnabled' => env_value('NEON_REALTIME_URL') !== null && env_value('NEON_STORE_FUNCTION_URL') !== null,
             ]]);
             break;
@@ -245,6 +246,7 @@ try {
                     'registrationEnabled' => env_bool('ALLOW_REGISTRATION', false),
                     'neonAuthEnabled' => env_value('NEON_AUTH_BASE_URL') !== null,
                     'neonAuthPublicSignup' => env_bool('NEON_AUTH_PUBLIC_SIGNUP', false),
+                    'googleOAuthEnabled' => env_bool('GOOGLE_OAUTH_ENABLED', false) && env_value('NEON_AUTH_BASE_URL') !== null,
                     'realtimeEnabled' => env_value('NEON_REALTIME_URL') !== null && env_value('NEON_STORE_FUNCTION_URL') !== null,
                 ],
             ]);
