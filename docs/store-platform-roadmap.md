@@ -29,7 +29,6 @@
 
 See the detailed architecture designs:
 - [Unified Cloudflare + Render + Neon target architecture](architecture/target-architecture.md)
-- [Azure Front Door alternative profile](architecture/azure-reference-profile.md)
 - [Windows 10/11 distribution plan](architecture/windows-distribution.md)
 
 These documents distinguish existing production services from proposed infrastructure.
