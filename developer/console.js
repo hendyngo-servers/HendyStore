@@ -256,6 +256,62 @@ async function uploadPackage(file) {
   return scan;
 }
 
+async function submitReleaseRecord(formElement) {
+  const form = Object.fromEntries(new FormData(formElement).entries());
+  const payload = {
+    title: form.title,
+    slug: form.slug,
+    category: form.category,
+    shortDescription: form.short_description,
+    description: form.description,
+    version: form.version,
+    platform: form.platform,
+    release_platform: form.release_platform,
+    release_track: form.release_track,
+    release_notes: form.release_notes,
+    minimum_requirements: form.minimum_requirements,
+    privacy_details: form.privacy_details,
+    video_url: form.video_url,
+    object_token: state.packageToken,
+    icon: 'images/dummy.png',
+    cover: 'images/dummy.png',
+    screenshots: String(form.screenshots_urls || '').split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 12),
+  };
+  const created = await call('developer_submit', 'POST', payload);
+  setState($('#releaseResult'), 'Đã gửi phát hành vào hàng chờ kiểm duyệt.\nMã ứng dụng: #' + created.data.product_id +
+    '\nTrạng thái: pending · Kênh: ' + form.release_track, 'success');
+  notify('Gói đã được gửi kiểm duyệt.');
+  formElement.reset();
+  $('#releasePackage').value = '';
+  $('#refreshPackageScan').hidden = true;
+  state.packageToken = '';
+  await loadWorkspace();
+}
+
+async function refreshAndSubmitScannedPackage() {
+  const button = $('#refreshPackageScan');
+  button.disabled = true;
+  try {
+    if (!state.packageToken) throw new Error('Không còn mã gói tải trong phiên hiện tại. Hãy tải gói lại.');
+    const result = await call('developer_scan_refresh', 'POST', { object_token: state.packageToken });
+    const scan = result.data || {};
+    setState($('#uploadStatus'), 'Trạng thái quét: ' + (scan.status || 'unknown') +
+      '\nSHA-256: ' + (scan.sha256 || '') + '\n' + (scan.scan_summary || ''),
+      scan.status === 'clean' ? 'success' : (['malicious','integrity_error','error'].includes(scan.status) ? 'error' : ''));
+    if (scan.status === 'clean') {
+      button.hidden = true;
+      await submitReleaseRecord($('#releaseForm'));
+    } else {
+      button.hidden = false;
+      notify('Gói chưa sẵn sàng. Trạng thái: ' + (scan.status || 'unknown'));
+    }
+  } catch (error) {
+    setState($('#releaseResult'), error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function submitRelease(event) {
   event.preventDefault();
   const formElement = event.currentTarget;
@@ -263,49 +319,26 @@ async function submitRelease(event) {
   const file = $('#releasePackage').files?.[0];
   if (!file) { setState($('#releaseResult'), 'Vui lòng chọn tệp cài đặt.', 'error'); return; }
   button.disabled = true;
+  $('#refreshPackageScan').hidden = true;
   setState($('#releaseResult'), 'Đang tải trực tiếp lên kho cloud…');
   try {
     const scan = await uploadPackage(file);
     if (scan.status !== 'clean') {
       setState($('#releaseResult'), 'Gói chưa đủ điều kiện gửi duyệt. Trạng thái quét: ' + scan.status +
-        '\nKhông thể xuất bản khi chưa có kết quả CLEAN từ VirusTotal và SHA-256 hợp lệ.', 'error');
+        '\nKhông thể xuất bản khi chưa có kết quả CLEAN từ VirusTotal và SHA-256 hợp lệ. Có thể kiểm tra lại sau.');
+      $('#refreshPackageScan').hidden = false;
       return;
     }
-    const form = Object.fromEntries(new FormData(formElement).entries());
-    const payload = {
-      title: form.title,
-      slug: form.slug,
-      category: form.category,
-      shortDescription: form.short_description,
-      description: form.description,
-      version: form.version,
-      platform: form.platform,
-      release_platform: form.release_platform,
-      release_track: form.release_track,
-      release_notes: form.release_notes,
-      minimum_requirements: form.minimum_requirements,
-      privacy_details: form.privacy_details,
-      video_url: form.video_url,
-      object_token: state.packageToken,
-      icon: 'images/dummy.png',
-      cover: 'images/dummy.png',
-      screenshots: String(form.screenshots_urls || '').split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 12),
-    };
-    const created = await call('developer_submit', 'POST', payload);
-    setState($('#releaseResult'), 'Đã gửi phát hành vào hàng chờ kiểm duyệt.\nMã ứng dụng: #' + created.data.product_id +
-      '\nTrạng thái: pending · Kênh: ' + form.release_track, 'success');
-    notify('Gói đã được gửi kiểm duyệt.');
-    formElement.reset();
-    $('#releasePackage').value = '';
-    await loadWorkspace();
+    await submitReleaseRecord(formElement);
   } catch (error) {
     setState($('#releaseResult'), error.message, 'error');
+    if (state.packageToken) $('#refreshPackageScan').hidden = false;
   } finally { button.disabled = false; }
 }
-
 function bindEvents() {
   $('#developerProfileForm')?.addEventListener('submit', submitProfile);
   $('#releaseForm')?.addEventListener('submit', submitRelease);
+  $('#refreshPackageScan')?.addEventListener('click', refreshAndSubmitScannedPackage);
   $('#developerReviews')?.addEventListener('submit', (event) => {
     if (event.target.matches('.dev-review-reply')) submitDeveloperReply(event);
   });
