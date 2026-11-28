@@ -69,9 +69,19 @@ export function createStorageClient(env: Env): { client: S3Client; bucket: strin
 export async function probeStorage(env: Env): Promise<{ provider: StorageProvider; ok: boolean }> {
   const provider = resolveStorageProvider(env);
   if (provider === "neon") {
-    // Neon remains the PHP application's primary storage adapter. This Worker
-    // reports its selection; the Render health endpoint performs the real probe.
-    return { provider, ok: Boolean(env.OBJECT_STORAGE_ENDPOINT || env.HENDY_API_ORIGIN) };
+    // Neon is probed by the PHP origin so the check uses its real server-side secrets.
+    const origin = String(env.HENDY_API_ORIGIN || "").replace(/\\/$/, "");
+    if (!origin.startsWith("https://")) return { provider, ok: false };
+    const response = await fetch(origin + "/api.php?action=health", { headers: { Accept: "application/json" } });
+    if (!response.ok) return { provider, ok: false };
+    const health = await response.json() as { storage?: string };
+    return { provider, ok: Boolean(health.storage && health.storage !== "unavailable") };
+  }
+  if (provider === "r2" && env.R2) {
+    // R2 binding confirms the bucket is attached to this Worker. Use S3 credentials
+    // separately when a browser needs a presigned PUT URL.
+    await env.R2.head("__hendy_storage_probe__");
+    return { provider, ok: true };
   }
   const { client, bucket } = createStorageClient(env);
   await client.send(new HeadBucketCommand({ Bucket: bucket }));
