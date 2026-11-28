@@ -533,11 +533,18 @@ function neon_auth_user(PDO $db): ?array
     $email = strtolower(trim((string) ($claims->email ?? '')));
     $name = trim((string) ($claims->name ?? $claims->email ?? 'Neon User'));
     if ($subject === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) return null;
+    $verifiedClaim = $claims->email_verified ?? $claims->emailVerified ?? null;
+    if ($verifiedClaim !== null && !in_array($verifiedClaim, [true, 1, 'true'], true)) return null;
 
-    $stmt = $db->prepare('SELECT id,name,email,role FROM users WHERE neon_auth_subject = :subject OR email = :email LIMIT 1');
+    $stmt = $db->prepare('SELECT id,name,email,role,neon_auth_subject FROM users WHERE neon_auth_subject = :subject OR LOWER(email) = :email LIMIT 1');
     $stmt->execute([':subject' => $subject, ':email' => $email]);
     $account = $stmt->fetch();
     if ($account) {
+        $linkedSubject = (string) ($account['neon_auth_subject'] ?? '');
+        // Do not let an unlinked social identity inherit an existing local Admin role.
+        if (($account['role'] ?? '') === 'admin' && $linkedSubject === '') return null;
+        if ($linkedSubject !== '' && !hash_equals($linkedSubject, $subject)) return null;
+
         if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql') {
             $update = $db->prepare('UPDATE users SET neon_auth_subject = COALESCE(neon_auth_subject,:subject) WHERE id = :id');
             $update->execute([':subject' => $subject, ':id' => $account['id']]);

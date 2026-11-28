@@ -110,6 +110,13 @@ const ready = (async () => {
       if (result?.error) throw new Error(result.error.message || "Không thể tạo tài khoản.");
       return result?.data;
     },
+    async signInGoogle(callbackURL = window.location.origin + "/") {
+      if (!auth) throw new Error("Neon Auth chưa được cấu hình.");
+      if (!config.googleOAuthEnabled) throw new Error("Đăng nhập Google chưa được bật cho HendyStore.");
+      const result = await auth.signIn.social({ provider: "google", callbackURL });
+      if (result?.error) throw new Error(result.error.message || "Không thể đăng nhập bằng Google.");
+      return result?.data;
+    },
     async signOut() {
       if (!auth) return;
       const result = await auth.signOut();
@@ -132,6 +139,10 @@ window.HendyNeon = {
   async signUp(name, email, password) {
     const client = await ready;
     return client.signUp(name, email, password);
+  },
+  async signInGoogle(callbackURL) {
+    const client = await ready;
+    return client.signInGoogle(callbackURL);
   },
   async signOut() {
     const client = await ready;
