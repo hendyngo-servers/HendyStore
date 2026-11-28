@@ -486,6 +486,17 @@ function neon_storage_get(string $key): \Aws\Result
 function neon_auth_bearer_token(): ?string
 {
     $header = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+    if ($header === '' && function_exists('getallheaders')) {
+        $headers = getallheaders();
+        if (is_array($headers)) {
+            foreach ($headers as $name => $value) {
+                if (strtolower((string)$name) === 'authorization') {
+                    $header = (string)$value;
+                    break;
+                }
+            }
+        }
+    }
     if (preg_match('/^Bearer\s+([A-Za-z0-9._~-]+)$/i', trim($header), $matches)) return $matches[1];
     return null;
 }
@@ -510,15 +521,24 @@ function neon_auth_claims(): ?object
     try {
         $claims = \Firebase\JWT\JWT::decode($token, $jwks);
         if (!isset($claims->sub, $claims->exp) || (int) $claims->exp <= time()) return null;
-        $authBase = (string) env_value('NEON_AUTH_BASE_URL', '');
-        $expectedIssuer = '';
+        $authBase = rtrim((string) env_value('NEON_AUTH_BASE_URL', ''), '/');
+        $allowedIssuers = [];
         if ($authBase !== '') {
+            $allowedIssuers[] = $authBase;
             $scheme = (string) parse_url($authBase, PHP_URL_SCHEME);
             $host = (string) parse_url($authBase, PHP_URL_HOST);
             $port = parse_url($authBase, PHP_URL_PORT);
-            if ($scheme !== '' && $host !== '') $expectedIssuer = $scheme . '://' . $host . ($port ? ':' . $port : '');
+            if ($scheme !== '' && $host !== '') {
+                $allowedIssuers[] = $scheme . '://' . $host . ($port ? ':' . $port : '');
+            }
         }
-        if (isset($claims->iss) && $expectedIssuer !== '' && rtrim((string) $claims->iss, '/') !== rtrim($expectedIssuer, '/')) return null;
+        $allowedIssuers = array_values(array_unique(array_map(static fn($value) => rtrim((string)$value, '/'), $allowedIssuers)));
+        if (isset($claims->iss) && $allowedIssuers !== [] && !in_array(rtrim((string)$claims->iss, '/'), $allowedIssuers, true)) return null;
+        if (isset($claims->aud) && $allowedIssuers !== []) {
+            $audiences = is_array($claims->aud) ? $claims->aud : [(string)$claims->aud];
+            $audiences = array_map(static fn($value) => rtrim((string)$value, '/'), $audiences);
+            if (array_intersect($audiences, $allowedIssuers) === []) return null;
+        }
         return $claims;
     } catch (Throwable $error) {
         return null;
@@ -737,7 +757,7 @@ function rate_limit_or_fail(PDO $db,string $scope,int $maxHits,int $windowSecond
     if ($hits>$maxHits) { header('Retry-After: '.$windowSeconds); json_response(['ok'=>false,'error'=>'Bạn thao tác quá nhanh. Vui lòng thử lại sau.'],429); }
 }
 function valid_media_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\.(?:jpg|jpeg|png|webp)$/i',$token); }
-function valid_package_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\\.(?:apk|apks|xapk|zip|7z|rar|exe|msi|dmg|pkg|deb|rpm|tar|gz|pdf|appx|msix|appimage)$/i',$token); }
+function valid_package_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\\.(?:apk|apks|xapk|zip|7z|rar|exe|msi|dmg|pkg|deb|rpm|tar|gz|pdf|appx|msix|appimage|ipa)$/i',$token); }
 function mb_substr_safe(string $value,int $max): string { return function_exists('mb_substr')?mb_substr($value,0,$max,'UTF-8'):substr($value,0,$max); }
 function validate_asset_reference(string $value): string {
     $value=trim($value); if ($value==='') return 'images/dummy.png';
@@ -759,6 +779,8 @@ function validate_product_input(array $input): array {
     $short=trim((string)($input['shortDescription']??'')); $description=trim((string)($input['description']??''));
     if ($title===''||$slug===''||$developer===''||$category===''||$short===''||$description==='') json_response(['ok'=>false,'error'=>'Vui lòng nhập đầy đủ thông tin ứng dụng.'],422);
     if (unicode_length($title)>180||strlen($slug)>180||unicode_length($developer)>160||unicode_length($category)>100||unicode_length($short)>255||unicode_length($description)>20000) json_response(['ok'=>false,'error'=>'Một hoặc nhiều trường vượt quá độ dài cho phép.'],422);
+    $status=trim((string)($input['status']??'draft'));
+    if (!in_array($status, ['draft','pending','published','rejected'], true)) $status='draft';
     $download=trim((string)($input['downloadUrl']??''));
     if ($download!=='' && !str_starts_with($download,'file:')) {
         $p=parse_url($download);

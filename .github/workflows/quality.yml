@@ -70,6 +70,8 @@ jobs:
           node --check js/custom.261126163157.js
           node --check admin/admin.js
           node --check features/storefront.js
+          node --check admin/security.js
+          node --check developer/console.js
           node --check admin/store-features.js
           node --check library/library.js
 

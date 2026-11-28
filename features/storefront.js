@@ -9,13 +9,14 @@ function detectPlatform() {
   const ua = navigator.userAgent || '';
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
   if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1)) return 'ios';
   if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows';
   if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) return 'macos';
   if (/Linux/i.test(platform) || /Linux/i.test(ua)) return 'linux';
   return 'web';
 }
 function platformLabel(value) {
-  return ({windows:'Windows',macos:'macOS',android:'Android',linux:'Linux',web:'Web',universal:'Mọi nền tảng'})[value] || value;
+  return ({windows:'Windows',macos:'macOS',android:'Android',ios:'iOS',linux:'Linux',web:'Web',universal:'Mọi nền tảng'})[value] || value;
 }
 function formatBytes(value) {
   const bytes = Number(value || 0);
@@ -72,6 +73,15 @@ function renderVersions(versions) {
     '</p><small>' + escapeHtml(item.created_at || '') + '</small></article>'
   ).join('') + '</div>';
 }
+function renderIntegrity(integrity) {
+  const host = $('#storeIntegrity');
+  if (!host) return;
+  if (!integrity?.verified || !/^[a-f0-9]{64}$/.test(String(integrity.sha256 || ''))) {
+    host.textContent = 'Chưa có dữ liệu checksum công khai đã được duyệt.';
+    return;
+  }
+  host.textContent = 'SHA-256: ' + integrity.sha256 + '\nDung lượng đã xác minh: ' + formatBytes(integrity.size) + '\nGói đã vượt qua kiểm tra tự động và kiểm duyệt thủ công.';
+}
 function renderSpecs(specs) {
   const host = $('#storeRequirements');
   const privacy = $('#storePrivacy');
@@ -93,6 +103,15 @@ function renderDownload(versions, product) {
   const selectBuild = () => {
     const platform = select.value;
     const chosen = chooseVersion(versions, platform);
+    if (platform === 'ios') {
+      selectedBuild = null;
+      button.href = '#';
+      button.setAttribute('aria-disabled','true');
+      button.classList.add('store-disabled');
+      message.textContent = 'iOS: ứng dụng cần phân phối qua App Store, TestFlight hoặc MDM. Hendy Store không sideload IPA trực tiếp.';
+      button.textContent = 'Xem hướng dẫn iOS';
+      return;
+    }
     if (!chosen) {
       selectedBuild = null;
       button.href = '#';
@@ -183,6 +202,7 @@ async function init() {
     renderGallery(extras.screenshots || []);
     renderVersions(extras.versions || []);
     renderSpecs(extras.specs || {});
+    renderIntegrity(extras.integrity || null);
     renderDownload(extras.versions || [], results[3].data || {});
     renderReviewStats(extras.reviewStats || {});
     renderReviews(results[2].data || []);

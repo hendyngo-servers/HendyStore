@@ -213,7 +213,7 @@ function hendystore_feature_download(PDO $db): never
     $versionId = (int)($grant['version_id'] ?? 0);
     $version = null;
     if ($versionId > 0) {
-        $versionStmt = $db->prepare('SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id LIMIT 1');
+        $versionStmt = $db->prepare("SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id AND release_track = 'production' LIMIT 1");
         $versionStmt->execute([':id' => $versionId, ':product_id' => (int)$product['id']]);
         $version = $versionStmt->fetch() ?: null;
         if (!$version) {
@@ -222,7 +222,7 @@ function hendystore_feature_download(PDO $db): never
         }
     }
     $packageUrl = (string)($version['package_url'] ?? $product['download_url'] ?? '');
-    if ($packageUrl === '' || !hendystore_feature_safe_package_url($packageUrl)) {
+    if ($packageUrl === '' || !hendystore_security_package_downloadable($db, (int)$product['id'], $packageUrl)) {
         http_response_code(404);
         exit;
     }
@@ -244,7 +244,7 @@ function hendystore_feature_download(PDO $db): never
     rate_limit_or_fail($db, 'store-version-download', 80, 3600);
     $userId = $grant['user_id'] !== null ? (int)$grant['user_id'] : null;
     $platform = strtolower(trim((string)$grant['platform']));
-    if (!in_array($platform, ['windows', 'macos', 'android', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+    if (!in_array($platform, ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
     $ipSecret = (string)env_value('APP_KEY', hash('sha256', __FILE__));
     $agent = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500);
     $history = $db->prepare('INSERT INTO app_download_history(user_id,product_id,version_id,platform,package_name,ip_hash,user_agent,created_at) VALUES(:user_id,:product_id,:version_id,:platform,:package_name,:ip_hash,:user_agent,:created_at)');
@@ -258,6 +258,7 @@ function hendystore_feature_download(PDO $db): never
         ':user_agent' => $agent,
         ':created_at' => $now,
     ]);
+    hendystore_security_track_event($db, (int)$product['id'], 'download_completed');
     $update = $db->prepare('UPDATE products SET downloads = downloads + 1 WHERE id = :id');
     $update->execute([':id' => (int)$product['id']]);
     if ($userId !== null) {
@@ -325,9 +326,16 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                     foreach ($legacy as $item) if (is_string($item) && $item !== '') $shots[] = ['id' => 0, 'image_url' => $item, 'caption' => ''];
                 }
             }
-            $versionStmt = $db->prepare('SELECT id, version, release_notes, platform, architecture, min_os, package_size_bytes, is_current, created_at FROM app_versions WHERE product_id = :id ORDER BY is_current DESC, created_at DESC, id DESC');
+            $versionStmt = $db->prepare("SELECT id, version, release_notes, platform, architecture, min_os, package_url, package_size_bytes, is_current, created_at FROM app_versions WHERE product_id = :id AND release_track = 'production' ORDER BY is_current DESC, created_at DESC, id DESC");
             $versionStmt->execute([':id' => (int)$product['id']]);
-            $versions = $versionStmt->fetchAll();
+            $versionRows = $versionStmt->fetchAll();
+            $versions = [];
+            foreach ($versionRows as $candidate) {
+                if (hendystore_security_package_downloadable($db, (int)$product['id'], (string)$candidate['package_url'], false)) {
+                    unset($candidate['package_url']);
+                    $versions[] = $candidate;
+                }
+            }
             if (!$versions && !empty($product['download_url'])) {
                 $versions[] = [
                     'id' => 0, 'version' => $product['version'], 'release_notes' => '',
@@ -337,11 +345,24 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             }
             $stats = $db->prepare("SELECT COUNT(*) AS review_count, COALESCE(AVG(rating),0) AS average_rating FROM app_product_reviews WHERE product_id = :id AND status = 'approved'");
             $stats->execute([':id' => (int)$product['id']]);
+            $integrity = null;
+            foreach ($versionRows as $candidate) {
+                if (empty($candidate['is_current'])) continue;
+                $packageUrl = (string)$candidate['package_url'];
+                if (str_starts_with($packageUrl, 'file:')) {
+                    $package = hendystore_security_package_row($db, 'packages/' . substr($packageUrl, 5));
+                    if ($package && ($package['moderation_status'] ?? '') === 'approved' && ($package['scan_status'] ?? '') === 'clean' && preg_match('/^[a-f0-9]{64}$/', (string)$package['sha256'])) {
+                        $integrity = ['sha256' => $package['sha256'], 'package_size_bytes' => (int)$package['file_size_bytes']];
+                        break;
+                    }
+                }
+            }
             json_response(['ok' => true, 'data' => [
                 'screenshots' => $shots,
                 'versions' => $versions,
                 'specs' => $specs,
                 'reviewStats' => $stats->fetch() ?: ['review_count' => 0, 'average_rating' => 0],
+                'integrity' => $integrity ? ['sha256' => $integrity['sha256'], 'size' => (int)$integrity['package_size_bytes'], 'verified' => true] : null,
                 'canDownload' => true,
             ]]);
         }
@@ -479,7 +500,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $input = request_data();
             $product = hendystore_feature_slug($db, trim((string)($input['slug'] ?? '')));
             $platform = strtolower((string)($input['platform'] ?? 'unknown'));
-            if (!in_array($platform, ['windows','macos','android','linux','web','unknown'], true)) $platform = 'unknown';
+            if (!in_array($platform, ['windows','macos','android','ios','linux','web','unknown'], true)) $platform = 'unknown';
             hendystore_feature_add_library($db, (int)$user['id'], (int)$product['id'], null, $platform);
             json_response(['ok' => true]);
         }
@@ -492,20 +513,20 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $versionId = max(0, (int)($input['version_id'] ?? 0));
             $version = null;
             if ($versionId > 0) {
-                $versionStmt = $db->prepare('SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id LIMIT 1');
+                $versionStmt = $db->prepare("SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id AND release_track = 'production' LIMIT 1");
                 $versionStmt->execute([':id' => $versionId, ':product_id' => (int)$product['id']]);
                 $version = $versionStmt->fetch() ?: null;
                 if (!$version) json_response(['ok' => false, 'error' => 'Phiên bản này không còn khả dụng.'], 404);
             }
             $packageUrl = (string)($version['package_url'] ?? $product['download_url'] ?? '');
-            if ($packageUrl === '' || !hendystore_feature_safe_package_url($packageUrl)) {
-                json_response(['ok' => false, 'error' => 'Chưa có gói tải hợp lệ cho thiết bị này.'], 404);
-            }
-            if (str_starts_with($packageUrl, 'file:') && !neon_storage_exists('packages/' . substr($packageUrl, 5))) {
-                json_response(['ok' => false, 'error' => 'Gói cài đặt hiện không khả dụng trong Object Storage.'], 404);
+            if ($packageUrl === '' || !hendystore_security_package_downloadable($db, (int)$product['id'], $packageUrl)) {
+                json_response(['ok' => false, 'error' => 'Phiên bản chưa vượt qua quét bảo mật/kiểm duyệt hoặc gói tải hiện không khả dụng.'], 404);
             }
             $platform = strtolower(trim((string)($input['platform'] ?? 'unknown')));
-            if (!in_array($platform, ['windows', 'macos', 'android', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+            if (!in_array($platform, ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+            if ($platform === 'ios') {
+                json_response(['ok' => false, 'error' => 'iOS cần phân phối qua App Store, TestFlight hoặc MDM; không hỗ trợ sideload IPA trực tiếp.'], 422);
+            }
             $user = current_user($db);
             $token = bin2hex(random_bytes(32));
             $insert = $db->prepare('INSERT INTO app_download_grants(token_hash,user_id,product_id,version_id,platform,expires_at,created_at) VALUES(:token_hash,:user_id,:product_id,:version_id,:platform,:expires_at,:created_at)');
@@ -518,6 +539,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                 ':expires_at' => time() + 600,
                 ':created_at' => date('Y-m-d H:i:s'),
             ]);
+            hendystore_security_track_event($db, (int)$product['id'], 'download_prepare');
             json_response(['ok' => true, 'data' => [
                 'url' => app_base_url() . '/api.php?action=store_version_download&grant=' . rawurlencode($token),
                 'expiresIn' => 600,
@@ -553,7 +575,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $minOs = trim((string)($input['min_os'] ?? ''));
             $packageUrl = trim((string)($input['package_url'] ?? ''));
             $size = max(0, (int)($input['package_size_bytes'] ?? 0));
-            $allowedPlatforms = ['windows', 'macos', 'android', 'linux', 'web', 'universal'];
+            $allowedPlatforms = ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'universal'];
             $allowedArch = ['x64', 'x86', 'arm64', 'armv7', 'universal'];
             if (!$product || $version === '' || strlen($version) > 60 || strlen($notes) > 12000 || strlen($minOs) > 120 || !in_array($platform, $allowedPlatforms, true) || !in_array($architecture, $allowedArch, true) || $packageUrl === '' || !hendystore_feature_safe_package_url($packageUrl)) {
                 json_response(['ok' => false, 'error' => 'Thông tin phiên bản hoặc gói cài đặt không hợp lệ.'], 422);
