@@ -240,6 +240,7 @@ function hendystore_security_scan_file(string $filePath, string $sha256, int $si
 
 function hendystore_security_scan_object(PDO $db, string $objectKey, string $expectedHash = '', int $expectedSize = 0): array
 {
+    @set_time_limit(0);
     if (!preg_match('#^packages/[a-f0-9]{32}\.[a-z0-9]{2,8}$#i', $objectKey) || !neon_storage_exists($objectKey)) {
         return ['status' => 'missing_file', 'provider' => 'VirusTotal', 'summary' => 'Không tìm thấy gói trong kho riêng tư.'];
     }
@@ -380,7 +381,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             try {
                 $client = neon_s3_client();
                 $command = $client->getCommand('PutObject', ['Bucket' => neon_storage_bucket(), 'Key' => $objectKey, 'ContentType' => $mime]);
-                $request = $client->createPresignedRequest($command, '+15 minutes');
+                $request = $client->createPresignedRequest($command, '+5 minutes');
             } catch (Throwable $error) {
                 error_log('[Hendy Store direct upload] Presign failed: ' . get_class($error));
                 json_response(['ok' => false, 'error' => 'Không thể khởi tạo tải trực tiếp lên kho cloud. Kiểm tra cấu hình Object Storage.'], 503);
@@ -608,6 +609,10 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $release = $stmt->fetch();
             if (!$release) json_response(['ok' => false, 'error' => 'Không tìm thấy hồ sơ phát hành.'], 404);
             if ($status === 'approved') {
+                $packageRow = hendystore_security_package_row($db, (string)$release['object_key']);
+                if ($packageRow && strtotime((string)$packageRow['created_at']) > time() - 360) {
+                    json_response(['ok' => false, 'error' => 'Chờ ít nhất 6 phút sau khi tải tệp lên để URL upload hết hạn hoàn toàn trước khi xuất bản.'], 409);
+                }
                 if ($release['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$release['sha256']) || !neon_storage_exists((string)$release['object_key'])) {
                     json_response(['ok' => false, 'error' => 'Không thể xuất bản: bắt buộc có kết quả quét sạch, SHA-256 hợp lệ và gói còn tồn tại trong kho riêng tư.'], 409);
                 }
