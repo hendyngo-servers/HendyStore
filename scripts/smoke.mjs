@@ -52,6 +52,9 @@ for (const token of [
 assert.ok(workerSource.includes('incoming.searchParams.get("action") === "products"'), "KV cache must be limited to the public catalogue action");
 assert.ok(workerSource.includes('!request.headers.has("Authorization")'), "KV cache must exclude authenticated requests");
 assert.ok(workerSource.includes('!request.headers.has("Cookie")'), "KV cache must exclude cookie-bearing requests");
+for (const token of ["__hendy_health__", "CACHE.put", "CACHE.get", "CACHE.delete", "R2.put", "R2.get", "R2.delete", "env.DB.prepare"]) {
+  assert.ok(workerSource.includes(token), "Missing live Cloudflare binding health probe: " + token);
+}
 
 const workerDatabase = await readFile("cloudflare/platform-worker/src/database.ts", "utf8");
 for (const token of ["origin", "env.DB", "prepare", "SELECT 1"]) {
