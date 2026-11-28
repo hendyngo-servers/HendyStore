@@ -222,6 +222,7 @@ try {
             require_method('GET');
             json_response(['ok' => true, 'data' => [
                 'authUrl' => env_value('NEON_AUTH_BASE_URL'),
+                'dataApiUrl' => env_value('NEON_DATA_API_URL'),
                 'realtimeUrl' => env_value('NEON_REALTIME_URL'),
                 'functionUrl' => env_value('NEON_STORE_FUNCTION_URL'),
                 'authEnabled' => env_value('NEON_AUTH_BASE_URL') !== null,
