@@ -69,9 +69,9 @@ services:
       - key: CLOUDFLARE_ACCOUNT_ID
         sync: false
       - key: OBJECT_STORAGE_ENDPOINT
-        value: https://s3.cloudfly.vn
+        sync: false
       - key: OBJECT_STORAGE_REGION
-        value: hn
+        sync: false
       - key: OBJECT_STORAGE_BUCKET
         sync: false
       - key: OBJECT_STORAGE_ACCESS_KEY_ID
