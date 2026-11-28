@@ -9,12 +9,12 @@ Nền tảng App Store miễn phí, ưu tiên triển khai đa môi trường.
 | Database | PostgreSQL trên Neon | Lưu ứng dụng, tài khoản, phiên bản, đánh giá, thư viện và lịch sử tải |
 | File storage | Neon / CloudFly / R2 / generic S3 adapters | PHP adapter supports one selected provider at a time; legacy Neon read fallback is available during migration. Actual provider selection still depends on valid production credentials and bucket probes |
 | CDN / Edge | Cloudflare Workers / Pages proxy | Có mã proxy trong cloudflare/; chỉ thành edge/CDN production sau khi cấu hình ORIGIN_URL, DNS và deploy |
-| Backend / API | PHP 8.4 + Apache, PDO; optional Cloudflare Worker API adapter | PHP remains the current business API. Worker provides edge proxy, health/capabilities, Hyperdrive/D1 connection probes and optional public-catalogue KV cache; it is not yet a full PHP business-logic rewrite |
+| Backend / API | PHP 8.4 + Apache, PDO; optional Cloudflare Workers API adapter | PHP remains the business API and Neon data owner. Worker proxies to the Render origin, optionally probes an isolated D1 binding, and may cache the anonymous public catalogue in KV. Hyperdrive is not used |
 | Frontend | Existing HTML/CSS/JavaScript + optional Next.js 16.4.6, React 19.3.1, Tailwind CSS 4.3.5 | Existing production pages remain; new SSR Next storefront source has Render Docker and Cloudflare Workers/OpenNext deployment targets, not yet deployed |
 | Build tooling | Node.js 22, npm, esbuild | Build browser bundle tích hợp Neon |
 | Authentication | Neon Auth (Managed Better Auth/JWKS) + PHP session fallback cho Admin | Email/password; Google OAuth UI có feature flag; role customer/admin; HttpOnly, CSRF |
 | Security | PDO prepared statements, CSRF, rate limit, HTTPS, secure cookies | Đã có trong code; tiếp tục tăng cường WAF và giám sát |
-| Malware scanning | Chưa tích hợp VirusTotal | Cần thêm API key, job quét riêng và trạng thái quarantine trước khi public package |
+| Malware scanning | PHP server-side SHA-256 + VirusTotal API | `features/security.php` checks private packages and blocks publication until scan and Admin moderation pass. No Python parser/antivirus worker is deployed or included |
 | Hosting | Render Docker + optional Cloudflare Workers/Pages | Render remains the current production origin. Cloudflare targets are manually dispatched and need account credentials/bindings before deployment |
 | CI | GitHub Actions | Composer validation, PHP lint, smoke test, Node build/test và secret scan |
 
@@ -33,10 +33,9 @@ Các công nghệ dưới đây là lựa chọn nâng cấp, không phải thà
 ## Kiến trúc và phương án triển khai
 
 - [Kiến trúc Cloudflare + Render + Neon](docs/architecture/target-architecture.md)
-- [Phương án Azure Front Door](docs/architecture/azure-reference-profile.md)
 - [Phân phối ứng dụng Windows 10/11](docs/architecture/windows-distribution.md)
 
-Đây là thiết kế triển khai theo từng giai đoạn; không phải xác nhận Cloudflare, Azure, Redis, Elasticsearch hay parser worker đã chạy production.
+Đây là thiết kế triển khai theo từng giai đoạn; code hoặc binding trong Git không đồng nghĩa Worker, Pages, R2, KV, D1 hay custom domain đã được triển khai và kiểm thử.
 
 ## Tính năng
 
@@ -80,14 +79,14 @@ PHP/Apache không chạy trực tiếp trên Workers/Pages. Mô hình hiện t�
 The multi-cloud adapter code and deployment targets are documented in [docs/architecture/multi-cloud-platform.md](docs/architecture/multi-cloud-platform.md).
 
 - Object Storage providers: neon, cloudfly, r2 and generic s3. Select exactly one provider for new writes. Keep the legacy Neon bucket available for read fallback until object counts, sizes and SHA-256 checks have been reconciled.
-- Database adapters: PHP supports PostgreSQL and SQLite for the current app; MySQL/MariaDB URL parsing and PDO connectivity are present but not all PHP SQL queries have been made dialect-portable. The Cloudflare Worker has separate PostgreSQL/MySQL Hyperdrive and D1 connection adapters.
-- D1 is an independent SQLite database and is not an automatic mirror of Neon PostgreSQL. A schema/data migration is a separate project; no dual-write or automatic production migration is enabled.
+- Database: Neon PostgreSQL remains the canonical business database behind the Render PHP origin. Cloudflare Workers call the HTTPS origin directly; Hyperdrive and MySQL adapters are not used. D1 is a separate optional edge database and does not mirror Neon.
+- D1 is an independent SQLite database for optional edge-local data/probes. It is not an automatic mirror of Neon PostgreSQL; no dual-write or automatic migration is enabled.
 - Next storefront: apps/storefront-next. Build for Render with its Dockerfile and the optional render.next.yaml Blueprint, or build for Cloudflare Workers through OpenNext. Cloudflare documents vinext as its recommended default for new Next.js applications; it is actively developed and may have compatibility gaps, so this project keeps OpenNext as the broad-compatibility path until the exact feature set is verified.
 - Cloudflare API Worker: cloudflare/platform-worker. It proxies the existing PHP API and provides platform health/capabilities. It does not bypass PHP auth/CSRF or replace all PHP business logic.
 - Cloudflare deployment is manual through GitHub Actions → Deploy HendyStore platform targets. The provision target creates/binds only resources explicitly selected through repository variables; it does not delete resources or migrate user/application/order data.
 - Store credentials only in GitHub Actions Secrets, Render Environment or Cloudflare Secrets. Never commit .env, database URLs, S3 secret keys, API tokens or signing keys.
 
-Current production stays on Render + Neon until Cloudflare account access, bindings and real storage/database probes have been verified. Cloudflare source/configuration in the repository is not proof that a Worker, Pages site, R2 bucket, D1 database or KV namespace is live.
+Production business data remains on Render + Neon. Cloudflare uses workers.dev/pages.dev until a Zone is attached. Source/configuration in Git is not proof that a Worker, Pages site, R2 bucket, D1 database or KV namespace is live.
 
 ## Neon
 
@@ -103,7 +102,7 @@ HendyStore adds a private developer release pipeline and an admin moderation que
 - Developer profiles must be approved by an administrator before package submission.
 - New developer releases are created as `pending`; they are not listed in the public catalogue.
 - Package uploads use short-lived presigned PUT URLs to the private `hendy-store-files` bucket. The PHP application does not proxy the large upload body.
-- The backend reads the stored object, calculates SHA-256, and checks VirusTotal. Only a `clean` scan can enter manual approval.
+- The PHP backend reads the private stored object, calculates SHA-256 and calls VirusTotal from `features/security.php`. Only a `clean` scan can enter manual approval; no separate Python worker is involved.
 - Admin approval re-checks file existence, SHA-256, and malware scan after the five-minute upload URL has expired (six-minute minimum age for presigned uploads).
 - Public app details disclose only the verified SHA-256 and package size for an approved release. Package object keys and provider credentials remain private.
 - Admin moderation: `/admin/security.php`. Developer Console: `/developer/`.
