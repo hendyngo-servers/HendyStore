@@ -110,6 +110,19 @@ HendyStore adds a private developer release pipeline and an admin moderation que
 - HendyStore is currently a free-only catalogue; a paid-app ranking is therefore not applicable.
 - Code signing is not active yet. `CODE_SIGNING_SERVICE_URL` and `CODE_SIGNING_SERVICE_TOKEN` are placeholders for a separate HSM/Key Vault signing adapter. Never upload .p12/.pfx/.keystore private keys to the public app package bucket.
 
+## S3-Compatible Object Storage
+
+The storage adapter supports the existing Neon Object Storage provider and CloudFly S3-compatible storage. Neon PostgreSQL and Neon Auth remain unchanged. CloudFly is not active until `OBJECT_STORAGE_PROVIDER=cloudfly` and a private CloudFly bucket plus credentials are configured in Render.
+
+- CloudFly endpoint: `https://s3.cloudfly.vn`
+- CloudFly region/signature: `hn` / AWS Signature V4
+- Path-style addressing is enabled for CloudFly.
+- The app writes new files to the selected provider. When CloudFly is primary, reads may fall back to the legacy Neon bucket for old `media/` and `packages/` objects.
+- Keep the existing Neon `AWS_*` / `NEON_STORAGE_BUCKET` variables until every legacy object has been copied and verified.
+- Browser direct upload requires bucket CORS for the exact Storefront domain and `PUT`; keep the bucket private and do not add public-read ACLs.
+
+See [CloudFly Object Storage setup and migration](docs/cloudfly-object-storage.md).
+
 ## Kiểm thử & triển khai
 
 1. npm ci && npm run build && npm test
