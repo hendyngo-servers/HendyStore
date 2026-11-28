@@ -354,7 +354,7 @@ function initialize_schema(PDO $db, string $driver): void
     migrate_legacy_demo_products($db);
 }
 
-final class NeonPostgresSessionHandler implements SessionHandlerInterface
+final class NeonPostgresSessionHandler implements SessionHandlerInterface, SessionUpdateTimestampHandlerInterface
 {
     public function __construct(private PDO $db) {}
     public function open(string $path, string $name): bool { return true; }
@@ -392,6 +392,16 @@ final class NeonPostgresSessionHandler implements SessionHandlerInterface
         $stmt = $this->db->prepare('SELECT 1 FROM app_sessions WHERE session_id = :id AND expires_at > :now');
         $stmt->execute([':id' => $id, ':now' => time()]);
         return (bool) $stmt->fetchColumn();
+    }
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        $lifetime = max(300, (int) ini_get('session.gc_maxlifetime'));
+        $stmt = $this->db->prepare('UPDATE app_sessions SET expires_at = :expires WHERE session_id = :id');
+        $stmt->execute([':id' => $id, ':expires' => time() + $lifetime]);
+        if ($stmt->rowCount() > 0) return true;
+        // If the row expired or disappeared between validateId and timestamp
+        // renewal, recreate it with the current serialized session data.
+        return $this->write($id, $data);
     }
 }
 
