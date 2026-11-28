@@ -576,7 +576,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 $scan = hendystore_security_scan_object($db, (string)$release['object_key'], (string)$package['sha256'], (int)$package['file_size_bytes']);
             }
             $fresh = hendystore_security_package_row($db, (string)$release['object_key']);
-            $update = $db->prepare('UPDATE app_release_security SET scan_status=:scan,sha256=:sha,size=:bytes,updated_at=:now WHERE product_id=:id');
+            $update = $db->prepare('UPDATE app_release_security SET scan_status=:scan,sha256=:sha,package_size_bytes=:bytes,updated_at=:now WHERE product_id=:id');
             $update->execute([':scan' => (string)($fresh['scan_status'] ?? 'error'), ':sha' => (string)($fresh['sha256'] ?? ''), ':bytes' => (int)($fresh['file_size_bytes'] ?? 0), ':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
             json_response(['ok' => true, 'data' => ['scan' => $scan]]);
         }
