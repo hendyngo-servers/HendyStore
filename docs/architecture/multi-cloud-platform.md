@@ -1,125 +1,121 @@
-# Multi-cloud platform architecture
+# HendyStore — kiến trúc Cloudflare + Render + Neon
 
-## Operating principle
+## Nguồn dữ liệu và trạng thái hiện tại
 
-The project now has a provider adapter layer, but the production origin remains the PHP application on Render with Neon PostgreSQL and the currently selected object-storage provider. The Cloudflare Worker and Next.js deployment targets are optional, independently deployed runtimes. They do not become active merely because their source/configuration exists in Git.
-
-No dual-write is enabled. A single provider is selected for new writes in each runtime. Neon read fallback is permitted during the object-storage migration. Database migrations are engine-specific and are never applied automatically to production by the infrastructure provisioning workflow.
-
-## Runtime map
-
-| Runtime | Responsibility | State |
+| Lớp | Vai trò | Trạng thái đã xác minh |
 |---|---|---|
-| Render PHP 8.4 / Apache | Existing authentication, Admin, moderation, developer, catalogue, library and download business API | Existing production origin |
-| Cloudflare Platform Worker | Edge API health/capabilities, same-origin proxy to the PHP business API, optional public catalogue KV cache | Source implemented; deploy manually |
-| Next.js 16.4.6 / React 19.3.1 / Tailwind 4.3.5 | SSR Storefront, app detail SEO, screenshots, changelog/specs/privacy and structured data | Source implemented; separate Render Docker and Workers/OpenNext targets |
-| Cloudflare Pages | Existing static assets + _worker.js compatibility proxy to the PHP origin | Legacy optional target; Pages is not a PHP runtime |
-| Neon PostgreSQL | Existing source of truth for users, apps, releases, reviews and library | Existing production database |
-| CloudFly / R2 / generic S3 | Private objects and direct-to-cloud package uploads via the S3 adapter | Configurable; real provider credentials/bucket must be verified |
-| Cloudflare D1 | Separate SQLite-compatible Worker database | Adapter/provisioning path exists; empty resource only until schema is migrated |
-| Cloudflare Hyperdrive | Worker connection pool/proxy to PostgreSQL or MySQL | Adapter/provisioning path exists; uses the selected existing database |
-| SQLite | Local development, tests or one Render instance with a persistent disk | Not suitable as a shared multi-instance production database |
-| MySQL/MariaDB | PDO connection parsing and Worker Hyperdrive probe | PHP connection adapter exists; full PHP business-query portability is incomplete |
+| Render Web Service | PHP 8.4 + Apache, API nghiệp vụ và Admin | Production origin tại \`https://hendystore.onrender.com\` |
+| Neon PostgreSQL | Tài khoản, ứng dụng, phiên bản, release, thư viện và lịch sử tải | Project \`sparkling-grass-08962862\`, branch \`production\`, database \`Hendy_Store\` |
+| Neon Auth | Identity/JWKS và đăng nhập | Dùng bởi PHP/browser integration |
+| Object Storage | Package và media riêng tư | Adapter Neon/CloudFly/R2/S3; phải có bucket private và HeadBucket pass trước khi đổi provider |
+| Cloudflare account | Workers, Pages, R2, D1, KV, Queues | Tài khoản đã kết nối; chưa có Zone/domain tùy chỉnh |
+| Next.js Storefront | SSR, SEO, metadata ứng dụng | Build Next.js và OpenNext đã pass CI; chưa xác nhận deploy production |
+| Python package worker | Parser/antivirus process riêng | Không có mã worker Python đang chạy trong repository |
+| Azure Front Door / Azure SQL / Azure Blob | Azure infrastructure | Không dùng trong kiến trúc đã chọn |
 
-## Request/data flow
+Neon là nguồn dữ liệu canonical. Không tạo bản ghi người dùng, sản phẩm, đơn hàng hay lịch sử tải thứ hai tại D1. Không bật dual-write.
 
-### Render-only
+## Luồng production
 
-1. Browser uses the existing Storefront or the optional Next.js service.
-2. Next.js same-origin /api.php route proxies cookies, Authorization and CSRF to HENDY_API_ORIGIN.
-3. PHP continues to enforce Neon Auth/JWKS, session, role, CSRF and business rules.
-4. PHP reads/writes the configured S3-compatible object provider.
-5. Neon PostgreSQL remains the database source of truth.
+\`\`\`mermaid
+flowchart TB
+  USER[Web / Mobile / Windows] --> EDGE[Cloudflare Workers + Pages]
+  EDGE --> NEXT[Next.js SSR Worker]
+  EDGE --> API[Platform API Worker]
+  NEXT --> API
+  API --> PHP[Render PHP 8.4 + Apache]
+  PHP --> AUTH[Neon Auth]
+  PHP --> PG[(Neon PostgreSQL)]
+  PHP --> OBJ[(Private Object Storage)]
+  API --> KV[(KV public catalogue cache)]
+  API -. optional edge metadata .-> D1[(D1 database)]
+  OBJ --> CDN[Signed/private download response]
+  CDN --> USER
+\`\`\`
 
-### Cloudflare edge + Render origin
+### Quyền sở hữu nghiệp vụ
 
-1. Browser calls a Cloudflare Worker or Pages route.
-2. The Worker proxies /api.php requests to HENDY_API_ORIGIN.
-3. Authentication headers, cookies, CSRF headers and HTTP methods are forwarded; the Worker does not bypass authorization.
-4. The optional CACHE KV binding caches only anonymous GET action=products catalogue responses for at most 30 seconds. Authenticated, cookie-bearing, Admin, download and write requests are not cached.
-5. Cloudflare WAF, DNS, Bot Management, Turnstile, Analytics and rate limiting are Cloudflare account settings; they are not silently enabled by deploying this Worker.
+- PHP trên Render giữ xác thực, phân quyền, CSRF, Admin, nhà phát triển, kiểm duyệt, thư viện và download grant.
+- Neon PostgreSQL giữ dữ liệu nghiệp vụ và session.
+- Cloudflare Worker là edge adapter/proxy; nó chuyển tiếp cookies, Authorization và CSRF tới PHP, không bỏ qua kiểm tra quyền.
+- Next.js gọi cùng API origin. Route API là same-origin proxy để tránh lộ secrets.
+- Cloudflare Pages phục vụ static assets và Pages Functions/Advanced Mode proxy. PHP không chạy trực tiếp trên Pages hoặc Workers.
+- \`workers.dev\` và \`pages.dev\` có thể dùng khi chưa có Zone. Custom domain chỉ cấu hình sau khi tài khoản có Zone đang hoạt động và DNS thuộc quyền kiểm soát.
 
-### Workers + database
+## Database adapters — không dùng Hyperdrive
 
-- DATABASE_PROVIDER=postgres requires a HYPERDRIVE binding.
-- DATABASE_PROVIDER=mysql requires a MYSQL_HYPERDRIVE binding.
-- DATABASE_PROVIDER=d1 requires a DB D1 binding.
-- DATABASE_PROVIDER=none is the safe default until a binding has been provisioned.
-- The Worker adapters perform a connection probe (SELECT 1) only. They do not yet replace every PHP business query.
-- D1 is a separate SQLite database. Creating it does not copy PostgreSQL tables or rows. A D1 schema/data migration must be separately authored, validated and reconciled before choosing D1 for application data.
+### \`origin\` — mặc định production
 
-## Storage providers
+Worker gọi \`HENDY_API_ORIGIN=https://hendystore.onrender.com\`. Neon credentials chỉ nằm ở Render. Đây là chế độ production được chọn, không cần Hyperdrive.
 
-OBJECT_STORAGE_PROVIDER is selected independently for each runtime.
+### D1 — dữ liệu edge tách biệt
 
-| Value | Endpoint / region | Adapter |
+Worker dùng binding \`DB\` và truy vấn native SQLite/D1. D1 độc lập với Neon:
+- Dùng cho cache metadata hoặc workload edge có schema riêng.
+- Chạy \`SELECT 1\` để kiểm tra binding.
+- Không tự sao chép schema hoặc rows từ Neon.
+- Không chuyển \`DATABASE_PROVIDER\` sang D1 cho API nghiệp vụ hiện có.
+
+MySQL/MariaDB/Hyperdrive không phải runtime database adapter của Cloudflare Worker trong thiết kế này. PDO parser cũ trong PHP không đồng nghĩa mọi query PHP chạy được với MySQL.
+
+## Object Storage
+
+| Provider | Endpoint/region | Vai trò |
 |---|---|---|
-| neon | Existing AWS_ENDPOINT_URL_S3 / AWS_REGION / NEON_STORAGE_BUCKET | AWS SDK PHP |
-| cloudfly | https://s3.cloudfly.vn / hn | AWS SigV4, path style |
-| r2 | https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com / auto | AWS SigV4, path style |
-| s3 | OBJECT_STORAGE_ENDPOINT / configured region | Generic S3 SDK |
+| Neon | Existing S3 endpoint and credentials | Legacy read fallback trong quá trình chuyển |
+| CloudFly | \`https://s3.cloudfly.vn\` / \`hn\` | S3-compatible provider |
+| Cloudflare R2 | \`https://<ACCOUNT_ID>.r2.cloudflarestorage.com\` / \`auto\` | Kho object ưu tiên sau khi xác minh private access |
+| Generic S3 | Endpoint/region do admin cấu hình | Provider tương thích S3 |
 
-When switching from Neon:
-- Keep the legacy Neon credentials and bucket available for read fallback.
-- New uploads go to the selected provider only.
-- Existing objects are not copied or deleted automatically.
-- Verify HeadBucket, PutObject, HeadObject, GetObject, presigned PUT CORS and a complete upload/download round trip before cutover.
-- Compare object counts, object sizes and SHA-256 before retiring the legacy bucket.
-- Never set public-read/public-write ACLs for app packages.
+Quy tắc chuyển:
+1. Bucket mới phải private, public access off, CORS chỉ cấp PUT cho đúng Storefront origin.
+2. Xác thực \`HeadBucket\`, upload thử object không chứa dữ liệu người dùng, \`HeadObject\`, download và SHA-256.
+3. New writes chỉ tới provider đã chọn. Read fallback Neon vẫn giữ cho objects cũ.
+4. So sánh số lượng objects, tổng bytes và checksum trước khi retire bucket Neon.
+5. Không bật public-read ACL và không cache package/quarantine/download grant ở CDN.
 
-## Database support boundaries
+## Workers, KV và Pages
 
-- PostgreSQL is the production source of truth.
-- PHP DATABASE_URL parser accepts PostgreSQL and MySQL/MariaDB URI formats, and Docker installs PDO PostgreSQL, MySQL and SQLite extensions.
-- A parser/driver does not mean every PHP query is portable. Several PHP modules still use PostgreSQL syntax such as ON CONFLICT, RETURNING and PostgreSQL-specific expressions. The complete PHP application must not be switched to MySQL until dialect-specific migrations and integration tests cover those modules.
-- SQLite is used by the smoke tests and local development. Render's ephemeral filesystem cannot be treated as a persistent database disk.
-- D1 has a separate Worker adapter and schema lifecycle. It is not a drop-in PostgreSQL endpoint and does not use PDO.
+- API Worker: health, capabilities, edge proxy và R2/KV/D1 bindings.
+- KV: cache danh mục công khai không đăng nhập, TTL tối đa 30 giây. Không cache Cookie, Authorization, Admin, login, private library, upload, download hoặc write requests.
+- R2: binding native cho Worker; PHP dùng S3 API key được lưu trong Render secrets.
+- D1: binding riêng, không thay Neon.
+- Next.js SSR: \`apps/storefront-next\`, build OpenNext lên Cloudflare Workers.
+- Pages: \`cloudflare/pages/public\` và \`_worker.js\` để phục vụ static assets/proxy. Pages project riêng cần có \`pages.dev\` URL; chưa có custom domain vì chưa có Zone.
+- Queues/Durable Objects/Workers AI/Vectorize chỉ thêm khi có use case và consumer/permissions; không khai báo binding chết.
 
-## Secrets and automation
+## Trust & Safety
 
-### GitHub Actions secrets
+- PHP \`features/security.php\` thực hiện SHA-256 và gọi VirusTotal API từ server. \`VIRUSTOTAL_API_KEY\` chỉ ở Render Environment.
+- Package mới ở trạng thái private/pending; chỉ release có scan sạch và được Admin duyệt mới được xuất bản.
+- Không có Python package parser/antivirus worker tách riêng; không triển khai hoặc duy trì kiến trúc đó.
+- Không thực thi installer/APK do người dùng upload trên máy chủ.
+- Duy trì kiểm tra chữ ký, checksum, MIME, kích thước, quyền phân phối và trạng thái quarantine.
 
-Set these through GitHub repository Settings → Secrets and variables → Actions. Secret values are never committed.
+## Tự động hóa cấu hình
 
-- CLOUDFLARE_API_TOKEN
-- CLOUDFLARE_ACCOUNT_ID
-- CF_OBJECT_STORAGE_ACCESS_KEY_ID
-- CF_OBJECT_STORAGE_SECRET_ACCESS_KEY
-- Optional CF_OBJECT_STORAGE_SESSION_TOKEN
-- Optional CF_PLATFORM_HEALTH_TOKEN
-- Optional CF_HYPERDRIVE_CONNECTION_STRING (PostgreSQL)
-- Optional CF_MYSQL_HYPERDRIVE_CONNECTION_STRING (MySQL)
+GitHub Actions secrets:
+- \`CLOUDFLARE_API_TOKEN\`
+- \`CLOUDFLARE_ACCOUNT_ID\`
+- \`CF_OBJECT_STORAGE_ACCESS_KEY_ID\` và \`CF_OBJECT_STORAGE_SECRET_ACCESS_KEY\` khi Worker cần S3 API.
+- \`CF_PLATFORM_HEALTH_TOKEN\` nếu bật internal health control.
 
-For an existing Hyperdrive config, use repository variables CF_HYPERDRIVE_ID / CF_MYSQL_HYPERDRIVE_ID instead of creating a new config.
+GitHub Actions variables:
+- \`CF_CREATE_R2\` / \`CF_R2_BUCKET_NAME\` sau khi bucket được bảo vệ private.
+- \`CF_CREATE_KV\` / \`CF_KV_NAMESPACE_NAME\`.
+- \`CF_CREATE_D1\` / \`CF_D1_DATABASE_NAME\`.
+- \`CF_DATABASE_PROVIDER=origin\`.
+- \`CF_OBJECT_STORAGE_PROVIDER=r2\` sau khi binding đã được cấu hình.
+- \`CF_R2_PRIVATE_ACCESS_CONFIRMED=true\` chỉ sau khi xác minh public access đã tắt.
 
-### GitHub Actions variables
+Workflow \`Deploy HendyStore platform targets\` chỉ được kích hoạt thủ công. Workflow không xóa resource, không migrate dữ liệu Neon và không ghi đè secret đang tồn tại.
 
-- CF_CREATE_R2=true and CF_R2_BUCKET_NAME only when you explicitly intend to create a new bucket.
-- CF_CREATE_D1=true and CF_D1_DATABASE_NAME only when you explicitly intend to create an empty D1 database.
-- CF_DATABASE_PROVIDER=none|postgres|mysql|d1 only after the matching binding exists.
-- CF_OBJECT_STORAGE_PROVIDER=neon|cloudfly|r2|s3 only after the selected provider can be probed.
-- Optional region/location and Hyperdrive config names.
+## Rollout gates
 
-Run .github/workflows/deploy-platform.yml manually:
-- provision: create or bind explicitly selected R2/D1/Hyperdrive resources, write Wrangler config in the workflow workspace and deploy the API Worker.
-- worker: deploy the Worker.
-- next: build and deploy the Next.js Worker.
-- pages: deploy the compatibility Pages proxy.
-- all: deploy all selected targets.
-
-The workflow does not run on normal pushes. It never deletes resources or migrates database rows. If optional credentials are absent, it does not create corresponding secrets.
-
-### Render environment
-
-The existing PHP service's secrets stay in Render Environment. Do not overwrite all variables through a Blueprint sync. Set only the selected provider values after checking them. The optional Next.js service is defined in render.next.yaml with Auto Deploy disabled; it is not created automatically.
-
-## Current limitations
-
-- The Worker is an edge proxy/capability layer; PHP remains the source of business rules. It is not a complete Express/NestJS rewrite.
-- MySQL is not yet fully supported by all PHP features.
-- D1 schema/data migration has not been performed.
-- KV cache is optional and only for anonymous public product listing.
-- Queue, Durable Objects, Vectorize, Workers AI, Turnstile and WAF are not enabled by this source alone. They require a use case, bindings, account resources and a separate security configuration.
-- Code signing requires an HSM/Key Vault signing adapter; signing keys must not be put in ordinary environment files.
-- Cloudflare resources cannot be provisioned until the account token and bucket/database selection are configured in GitHub Actions.
-- The production Neon DATABASE_URL must authenticate before either Render-origin or Cloudflare-proxy routes can be considered healthy.
+1. Neon connection: pass — Render log đã xác nhận \`pgsql / Hendy_Store\`.
+2. R2 bucket: tắt public access, cấu hình CORS, tạo token scoped đúng bucket.
+3. Render S3 adapter: set \`OBJECT_STORAGE_PROVIDER=r2\` bằng secret an toàn, chạy HeadBucket và upload/download thử.
+4. KV/D1: tạo resource riêng \`hendystore-catalog-cache\` và \`hendystore-edge-db\`; chạy binding probe, không nhập dữ liệu Neon.
+5. Build/test PHP, Worker TypeScript, Next/OpenNext.
+6. Deploy Worker (\`workers.dev\`), Next SSR Worker và Pages (\`pages.dev\`); kiểm tra API, Auth, Admin, catalogue và private downloads.
+7. Chỉ thêm custom domain sau khi Cloudflare Zone có sẵn.
