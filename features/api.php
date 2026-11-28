@@ -499,7 +499,10 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                 json_response(['ok' => false, 'error' => 'Gói cài đặt hiện không khả dụng trong Object Storage.'], 404);
             }
             $platform = strtolower(trim((string)($input['platform'] ?? 'unknown')));
-            if (!in_array($platform, ['windows', 'macos', 'android', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+            if (!in_array($platform, ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+            if ($platform === 'ios') {
+                json_response(['ok' => false, 'error' => 'iOS cần phân phối qua App Store, TestFlight hoặc MDM; không hỗ trợ sideload IPA trực tiếp.'], 422);
+            }
             $user = current_user($db);
             $token = bin2hex(random_bytes(32));
             $insert = $db->prepare('INSERT INTO app_download_grants(token_hash,user_id,product_id,version_id,platform,expires_at,created_at) VALUES(:token_hash,:user_id,:product_id,:version_id,:platform,:expires_at,:created_at)');
@@ -806,7 +809,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $input = request_data();
             $product = hendystore_feature_slug($db, trim((string)($input['slug'] ?? '')));
             $platform = strtolower((string)($input['platform'] ?? 'unknown'));
-            if (!in_array($platform, ['windows','macos','android','linux','web','unknown'], true)) $platform = 'unknown';
+            if (!in_array($platform, ['windows','macos','android','ios','linux','web','unknown'], true)) $platform = 'unknown';
             hendystore_feature_add_library($db, (int)$user['id'], (int)$product['id'], null, $platform);
             json_response(['ok' => true]);
         }
@@ -832,7 +835,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                 json_response(['ok' => false, 'error' => 'Gói cài đặt hiện không khả dụng trong Object Storage.'], 404);
             }
             $platform = strtolower(trim((string)($input['platform'] ?? 'unknown')));
-            if (!in_array($platform, ['windows', 'macos', 'android', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
+            if (!in_array($platform, ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'unknown'], true)) $platform = 'unknown';
             $user = current_user($db);
             $token = bin2hex(random_bytes(32));
             $insert = $db->prepare('INSERT INTO app_download_grants(token_hash,user_id,product_id,version_id,platform,expires_at,created_at) VALUES(:token_hash,:user_id,:product_id,:version_id,:platform,:expires_at,:created_at)');
