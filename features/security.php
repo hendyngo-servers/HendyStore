@@ -498,8 +498,8 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             if (!valid_package_token($token)) json_response(['ok' => false, 'error' => 'Gói cài đặt không hợp lệ.'], 422);
             $objectKey = 'packages/' . $token;
             $package = hendystore_security_package_row($db, $objectKey);
-            if (!$package || (int)$package['uploader_id'] !== (int)$user['id'] || $package['moderation_status'] !== 'pending' || $package['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$package['sha256'])) {
-                json_response(['ok' => false, 'error' => 'Ứng dụng chỉ được gửi duyệt khi gói đã quét sạch và có SHA-256 hợp lệ.'], 409);
+            if (!$package || (int)$package['uploader_id'] !== (int)$user['id'] || ($package['moderation_status'] ?? 'pending') !== 'pending' || $package['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$package['sha256'])) {
+                json_response(['ok' => false, 'error' => 'Ứng dụng chỉ được gửi duyệt khi gói mới đã quét sạch, chưa từng được duyệt và có SHA-256 hợp lệ.'], 409);
             }
             $video = trim((string)($input['video_url'] ?? ''));
             if ($video !== '') {
@@ -519,19 +519,47 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $product[':status'] = 'pending';
             $product[':featured'] = 0;
             $now = date('Y-m-d H:i:s');
-            $sql = 'INSERT INTO products(slug,title,developer,category,short_description,description,version,platform,price_type,price_amount_vnd,icon,cover,screenshots_json,download_url,downloads,rating,featured,status,created_at,updated_at)
-                VALUES(:slug,:title,:developer,:category,:short_description,:description,:version,:platform,:price_type,:price_amount_vnd,:icon,:cover,:screenshots_json,:download_url,0,:rating,:featured,:status,:created_at,:updated_at)';
-            if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql') $sql .= ' RETURNING id';
-            $stmt = $db->prepare($sql);
-            $stmt->execute($product + [':created_at' => $now, ':updated_at' => $now]);
-            $productId = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql' ? (int)$stmt->fetchColumn() : (int)$db->lastInsertId();
-
-            $versionStmt = $db->prepare("INSERT INTO app_versions(product_id,version,release_notes,platform,architecture,min_os,package_url,package_size_bytes,is_current,release_track,created_at)
-                VALUES(:product,:version,:notes,:platform,:architecture,:minos,:url,:size,1,:track,:created)");
             $releasePlatform = strtolower((string)($input['release_platform'] ?? 'universal'));
             if (!in_array($releasePlatform, ['windows','macos','android','ios','linux','web','universal'], true)) $releasePlatform = 'universal';
             $track = (string)($input['release_track'] ?? 'production');
             if (!in_array($track, ['alpha','beta','production'], true)) $track = 'production';
+
+            $existingStmt = $db->prepare('SELECT p.id,p.status,s.developer_user_id,s.moderation_status FROM products p LEFT JOIN app_release_security s ON s.product_id=p.id WHERE p.slug=:slug LIMIT 1');
+            $existingStmt->execute([':slug' => (string)$product[':slug']]);
+            $existing = $existingStmt->fetch();
+            if ($existing) {
+                if ((int)($existing['developer_user_id'] ?? 0) !== (int)$user['id']) {
+                    json_response(['ok' => false, 'error' => 'Slug đã được sử dụng hoặc ứng dụng không thuộc hồ sơ nhà phát triển của bạn.'], 409);
+                }
+                if (($existing['moderation_status'] ?? '') === 'pending') {
+                    json_response(['ok' => false, 'error' => 'Ứng dụng này đang có một bản phát hành chờ kiểm duyệt. Hãy hoàn tất bản đó trước khi gửi phiên bản mới.'], 409);
+                }
+                $productId = (int)$existing['id'];
+                $updateProduct = $db->prepare("UPDATE products SET title=:title,developer=:developer,category=:category,short_description=:short_description,description=:description,
+                    version=CASE WHEN status='published' THEN version ELSE :version END,
+                    platform=:platform,icon=:icon,cover=:cover,screenshots_json=:screenshots_json,
+                    download_url=CASE WHEN status='published' THEN download_url ELSE :download_url END,
+                    status=CASE WHEN status='published' THEN 'published' ELSE 'pending' END,
+                    updated_at=:updated_at WHERE id=:id");
+                $updateProduct->execute([
+                    ':title' => $product[':title'], ':developer' => $product[':developer'], ':category' => $product[':category'],
+                    ':short_description' => $product[':short_description'], ':description' => $product[':description'],
+                    ':version' => $product[':version'], ':platform' => $product[':platform'], ':icon' => $product[':icon'],
+                    ':cover' => $product[':cover'], ':screenshots_json' => $product[':screenshots_json'],
+                    ':download_url' => $product[':download_url'], ':updated_at' => $now, ':id' => $productId,
+                ]);
+            } else {
+                $sql = 'INSERT INTO products(slug,title,developer,category,short_description,description,version,platform,price_type,price_amount_vnd,icon,cover,screenshots_json,download_url,downloads,rating,featured,status,created_at,updated_at)
+                    VALUES(:slug,:title,:developer,:category,:short_description,:description,:version,:platform,:price_type,:price_amount_vnd,:icon,:cover,:screenshots_json,:download_url,0,:rating,:featured,:status,:created_at,:updated_at)';
+                if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql') $sql .= ' RETURNING id';
+                $stmt = $db->prepare($sql);
+                $stmt->execute($product + [':created_at' => $now, ':updated_at' => $now]);
+                $productId = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'pgsql' ? (int)$stmt->fetchColumn() : (int)$db->lastInsertId();
+            }
+
+            // A new build stays non-current until an administrator approves it.
+            $versionStmt = $db->prepare("INSERT INTO app_versions(product_id,version,release_notes,platform,architecture,min_os,package_url,package_size_bytes,is_current,release_track,created_at)
+                VALUES(:product,:version,:notes,:platform,:architecture,:minos,:url,:size,0,:track,:created)");
             $versionStmt->execute([
                 ':product' => $productId, ':version' => (string)$product[':version'],
                 ':notes' => mb_substr_safe(trim((string)($input['release_notes'] ?? '')), 12000),
