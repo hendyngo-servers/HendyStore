@@ -35,6 +35,12 @@ $columns = $db->query('PRAGMA table_info(app_user_library)')->fetchAll(PDO::FETC
 if (!in_array('last_platform', $columns, true)) {
     throw new RuntimeException('The user library must track the last platform.');
 }
+$packageColumns = $db->query('PRAGMA table_info(app_security_packages)')->fetchAll(PDO::FETCH_COLUMN, 1);
+foreach (['upload_method','moderation_status','sha256','scan_status'] as $column) {
+    if (!in_array($column, $packageColumns, true)) {
+        throw new RuntimeException('Package security records must store ' . $column . '.');
+    }
+}
 $securityColumns = $db->query('PRAGMA table_info(app_release_security)')->fetchAll(PDO::FETCH_COLUMN, 1);
 if (!in_array('package_size_bytes', $securityColumns, true)) {
     throw new RuntimeException('Release security records must store the verified package size.');
