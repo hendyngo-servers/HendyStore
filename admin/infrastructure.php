@@ -71,7 +71,7 @@ OBJECT_STORAGE_ACCESS_KEY_ID=
 OBJECT_STORAGE_SECRET_ACCESS_KEY=
 OBJECT_STORAGE_FORCE_PATH_STYLE=true
 OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true</pre>
-<div class="infra-actions"><button class="infra-btn" id="copyCurrentConfig" type="button">Sao chép cấu hình đang hiển thị</button><a class="infra-btn alt" href="../docs/cloudfly-object-storage.md">Hướng dẫn CloudFly ↗</a></div>
+<div class="infra-actions"><button class="infra-btn" id="copyCurrentConfig" type="button">Sao chép cấu hình đang hiển thị</button><a class="infra-btn alt" href="https://github.com/hendyngo-servers/HendyStore/blob/main/docs/cloudfly-object-storage.md" target="_blank" rel="noopener">Hướng dẫn CloudFly ↗</a></div>
 <p class="infra-muted" style="margin-top:12px">Tự động tạo/binding resource trên Cloudflare yêu cầu tài khoản đã đăng nhập và API token có quyền đúng scope. Mã nguồn không được tự tạo bucket/database hoặc ghi đè secret production chỉ bằng cách mở trang này.</p>
 </section>
 </div></main><div class="toast" id="toast" role="status"></div></body></html>
