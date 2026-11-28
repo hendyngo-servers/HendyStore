@@ -47,6 +47,7 @@ header('Cache-Control: no-store, private');
 .dev-badge.pending{background:#fff4df;color:#8c6116}
 .dev-gate{text-align:center;padding:34px 18px}
 .dev-gate[hidden],.dev-panel[hidden]{display:none}
+.dev-analytics-row{display:grid;grid-template-columns:105px minmax(60px,1fr) 42px;align-items:center;gap:12px;font-size:12px;color:#69758a;padding:5px 0}.dev-analytics-track{height:10px;background:#edf0f7;border-radius:99px;overflow:hidden}.dev-analytics-track i{display:block;height:100%;background:#6676df;border-radius:99px}.dev-review-reply{display:grid;gap:10px;margin-top:12px}.dev-review-reply .dev-field textarea{min-height:70px}.dev-meta{color:#7a8497;font-size:12px;margin-top:5px;line-height:1.5}
 @media(max-width:760px){.dev-shell{padding:20px 14px 50px}.dev-hero{padding:25px;display:block}.dev-pill{margin-top:18px}.dev-grid{grid-template-columns:1fr}.dev-card-full{grid-column:auto}.dev-form{grid-template-columns:1fr}.dev-field.wide{grid-column:auto}.dev-row{align-items:flex-start;flex-direction:column}}
 </style>
 </head>
