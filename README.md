@@ -7,15 +7,15 @@ Nền tảng App Store miễn phí, ưu tiên triển khai đa môi trường.
 | Lớp | Công nghệ hiện tại | Vai trò / trạng thái |
 |---|---|---|
 | Database | PostgreSQL trên Neon | Lưu ứng dụng, tài khoản, phiên bản, đánh giá, thư viện và lịch sử tải |
-| File storage | Neon Object Storage (S3-compatible) | Bucket private hendy-store-files, lưu ảnh và package; backend dùng AWS SDK S3 |
+| File storage | Neon / CloudFly / R2 / generic S3 adapters | PHP adapter supports one selected provider at a time; legacy Neon read fallback is available during migration. Actual provider selection still depends on valid production credentials and bucket probes |
 | CDN / Edge | Cloudflare Workers / Pages proxy | Có mã proxy trong cloudflare/; chỉ thành edge/CDN production sau khi cấu hình ORIGIN_URL, DNS và deploy |
-| Backend / API | PHP 8.4 + Apache, PDO | API nghiệp vụ tại api.php; chạy Docker trên Render hoặc PHP hosting/VPS |
-| Frontend | HTML, CSS, JavaScript | Giao diện hiện tại; responsive, SEO cơ bản; chưa phải React/Next.js |
+| Backend / API | PHP 8.4 + Apache, PDO; optional Cloudflare Worker API adapter | PHP remains the current business API. Worker provides edge proxy, health/capabilities, Hyperdrive/D1 connection probes and optional public-catalogue KV cache; it is not yet a full PHP business-logic rewrite |
+| Frontend | Existing HTML/CSS/JavaScript + optional Next.js 16.4.6, React 19.3.1, Tailwind CSS 4.3.5 | Existing production pages remain; new SSR Next storefront source has Render Docker and Cloudflare Workers/OpenNext deployment targets, not yet deployed |
 | Build tooling | Node.js 22, npm, esbuild | Build browser bundle tích hợp Neon |
 | Authentication | Neon Auth (Managed Better Auth/JWKS) + PHP session fallback cho Admin | Email/password; Google OAuth UI có feature flag; role customer/admin; HttpOnly, CSRF |
 | Security | PDO prepared statements, CSRF, rate limit, HTTPS, secure cookies | Đã có trong code; tiếp tục tăng cường WAF và giám sát |
 | Malware scanning | Chưa tích hợp VirusTotal | Cần thêm API key, job quét riêng và trạng thái quarantine trước khi public package |
-| Hosting | Render Web Service + Docker | main Auto Deploy; Neon là database và object storage |
+| Hosting | Render Docker + optional Cloudflare Workers/Pages | Render remains the current production origin. Cloudflare targets are manually dispatched and need account credentials/bindings before deployment |
 | CI | GitHub Actions | Composer validation, PHP lint, smoke test, Node build/test và secret scan |
 
 ## Lộ trình nâng cấp / công nghệ có thể tích hợp
@@ -74,6 +74,20 @@ PHP/Apache không chạy trực tiếp trên Workers/Pages. Mô hình hiện t�
 - Vai trò Data API chỉ được `SELECT` trên view này, không có quyền trực tiếp trên 17 bảng nghiệp vụ hiện có.
 - `api.php` vẫn xử lý hồ sơ, Admin, chi tiết sản phẩm, upload, đánh giá, thư viện và tải xuống. Danh mục tự fallback về PHP API khi Data API không sẵn sàng.
 - `NEON_AUTH_PUBLIC_SIGNUP=true` điều khiển tab đăng ký khách hàng; Neon Auth vẫn bắt buộc xác minh email. Giữ `ALLOW_REGISTRATION=false` cho luồng đăng ký PHP cũ.
+
+## Multi-cloud development and deployment
+
+The multi-cloud adapter code and deployment targets are documented in [docs/architecture/multi-cloud-platform.md](docs/architecture/multi-cloud-platform.md).
+
+- Object Storage providers: neon, cloudfly, r2 and generic s3. Select exactly one provider for new writes. Keep the legacy Neon bucket available for read fallback until object counts, sizes and SHA-256 checks have been reconciled.
+- Database adapters: PHP supports PostgreSQL and SQLite for the current app; MySQL/MariaDB URL parsing and PDO connectivity are present but not all PHP SQL queries have been made dialect-portable. The Cloudflare Worker has separate PostgreSQL/MySQL Hyperdrive and D1 connection adapters.
+- D1 is an independent SQLite database and is not an automatic mirror of Neon PostgreSQL. A schema/data migration is a separate project; no dual-write or automatic production migration is enabled.
+- Next storefront: apps/storefront-next. Build for Render with its Dockerfile and the optional render.next.yaml Blueprint, or build for Cloudflare Workers through OpenNext. Cloudflare documents vinext as its recommended default for new Next.js applications; it is actively developed and may have compatibility gaps, so this project keeps OpenNext as the broad-compatibility path until the exact feature set is verified.
+- Cloudflare API Worker: cloudflare/platform-worker. It proxies the existing PHP API and provides platform health/capabilities. It does not bypass PHP auth/CSRF or replace all PHP business logic.
+- Cloudflare deployment is manual through GitHub Actions → Deploy HendyStore platform targets. The provision target creates/binds only resources explicitly selected through repository variables; it does not delete resources or migrate user/application/order data.
+- Store credentials only in GitHub Actions Secrets, Render Environment or Cloudflare Secrets. Never commit .env, database URLs, S3 secret keys, API tokens or signing keys.
+
+Current production stays on Render + Neon until Cloudflare account access, bindings and real storage/database probes have been verified. Cloudflare source/configuration in the repository is not proof that a Worker, Pages site, R2 bucket, D1 database or KV namespace is live.
 
 ## Neon
 
