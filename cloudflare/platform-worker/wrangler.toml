@@ -1,4 +1,4 @@
-name = "hendy-store-platform-api"
+name = "hendy-platform-api"
 main = "src/index.ts"
 compatibility_date = "2026-11-28"
 compatibility_flags = ["nodejs_compat"]
