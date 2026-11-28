@@ -94,9 +94,101 @@ const ready = (async () => {
     }
   }
 
+  async function getDataApiToken() {
+    if (!auth) throw new Error("Neon Auth is required to access the Data API.");
+    const signedIn = await getToken();
+    if (signedIn) return signedIn;
+    if (typeof auth.getAnonymousToken !== "function") {
+      throw new Error("This Neon Auth client does not provide anonymous Data API tokens.");
+    }
+    const result = await auth.getAnonymousToken();
+    if (result?.error) throw new Error(result.error.message || "Unable to obtain an anonymous Data API token.");
+    const token = result?.data?.token || result?.token;
+    if (!token) throw new Error("Neon Auth returned an empty Data API token.");
+    return token;
+  }
+
+  async function listPublicCatalog({ page = 1, limit = 18, category = "", query = "", sort = "popular" } = {}) {
+    const base = String(config.dataApiUrl || "").trim();
+    if (!base) throw new Error("NEON_DATA_API_URL is not configured.");
+    const endpoint = new URL("api_public_catalog", base.replace(/\/+$/, "") + "/");
+    const safePage = Math.max(1, Math.min(100000, Number.parseInt(page, 10) || 1));
+    const safeLimit = Math.max(1, Math.min(48, Number.parseInt(limit, 10) || 18));
+    endpoint.searchParams.set("select", "id,slug,title,developer,category,short_description,version,platform,icon,cover,downloads,rating,featured,updated_at");
+    endpoint.searchParams.set("limit", String(safeLimit));
+    endpoint.searchParams.set("offset", String((safePage - 1) * safeLimit));
+    endpoint.searchParams.set("order", ({
+      newest: "updated_at.desc",
+      rating: "rating.desc,downloads.desc",
+      name: "title.asc",
+      "free-popular": "downloads.desc,rating.desc,title.asc",
+      popular: "featured.desc,downloads.desc,rating.desc"
+    })[sort] || "featured.desc,downloads.desc,rating.desc");
+
+    const safeCategory = String(category || "").replace(/[^\p{L}\p{N}\s_-]/gu, " ").trim().slice(0, 100);
+    if (safeCategory && safeCategory !== "Tất cả") {
+      endpoint.searchParams.set("category", "eq." + safeCategory);
+    }
+    const safeQuery = String(query || "").replace(/[^\p{L}\p{N}\s_-]/gu, " ").trim().slice(0, 100);
+    if (safeQuery) {
+      endpoint.searchParams.set("or", "(title.ilike.*" + safeQuery + "*,developer.ilike.*" + safeQuery + "*,short_description.ilike.*" + safeQuery + "*)");
+    }
+
+    const token = await getDataApiToken();
+    const response = await fetch(endpoint, {
+      method: "GET",
+      credentials: "omit",
+      headers: {
+        Accept: "application/json",
+        Authorization: "Bearer " + token,
+        Prefer: "count=exact"
+      }
+    });
+    let rows;
+    try { rows = await response.json(); }
+    catch { throw new Error("Neon Data API returned an invalid response."); }
+    if (!response.ok || !Array.isArray(rows)) {
+      throw new Error(rows?.message || rows?.error || "Unable to read the public catalogue from Neon Data API.");
+    }
+    const range = response.headers.get("Content-Range") || "";
+    const totalPart = range.includes("/") ? range.split("/").pop() : "";
+    const total = totalPart && totalPart !== "*" && Number.isFinite(Number(totalPart))
+      ? Number(totalPart)
+      : rows.length;
+    return {
+      ok: true,
+      data: rows.map(row => ({
+        id: Number(row.id),
+        slug: row.slug,
+        title: row.title,
+        developer: row.developer,
+        category: row.category,
+        shortDescription: row.short_description,
+        version: row.version,
+        platform: row.platform,
+        priceType: "Free",
+        priceAmountVnd: 0,
+        icon: row.icon,
+        cover: row.cover,
+        downloads: Number(row.downloads || 0),
+        rating: Number(row.rating || 0),
+        featured: Boolean(row.featured),
+        updatedAt: row.updated_at
+      })),
+      meta: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        pages: Math.max(1, Math.ceil(total / safeLimit))
+      }
+    };
+  }
+
   return {
     config,
     auth,
+    listPublicCatalog,
+    getDataApiToken,
     getToken,
     async signIn(email, password) {
       if (!auth) throw new Error("Neon Auth chưa được cấu hình. Kiểm tra NEON_AUTH_BASE_URL trên Render.");
@@ -147,6 +239,14 @@ window.HendyNeon = {
   async signOut() {
     const client = await ready;
     return client.signOut();
+  },
+  async listPublicCatalog(options) {
+    const client = await ready;
+    return client.listPublicCatalog(options);
+  },
+  async getDataApiToken() {
+    const client = await ready;
+    return client.getDataApiToken();
   },
   async subscribeCatalog() {
     const client = await ready;
