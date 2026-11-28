@@ -325,7 +325,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                     foreach ($legacy as $item) if (is_string($item) && $item !== '') $shots[] = ['id' => 0, 'image_url' => $item, 'caption' => ''];
                 }
             }
-            $versionStmt = $db->prepare('SELECT id, version, release_notes, platform, architecture, min_os, package_size_bytes, is_current, created_at FROM app_versions WHERE product_id = :id AND release_track = 'production' ORDER BY is_current DESC, created_at DESC, id DESC');
+            $versionStmt = $db->prepare("SELECT id, version, release_notes, platform, architecture, min_os, package_size_bytes, is_current, created_at FROM app_versions WHERE product_id = :id AND release_track = 'production' ORDER BY is_current DESC, created_at DESC, id DESC");
             $versionStmt->execute([':id' => (int)$product['id']]);
             $versions = $versionStmt->fetchAll();
             if (!$versions && !empty($product['download_url'])) {
@@ -337,7 +337,18 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             }
             $stats = $db->prepare("SELECT COUNT(*) AS review_count, COALESCE(AVG(rating),0) AS average_rating FROM app_product_reviews WHERE product_id = :id AND status = 'approved'");
             $stats->execute([':id' => (int)$product['id']]);
-            $integrityStmt = $db->prepare("SELECT sha256,package_size_bytes FROM app_release_security WHERE product_id=:id AND moderation_status='approved' AND scan_status='clean' AND sha256 ~ '^[a-f0-9]{64}
+            $integrityStmt = $db->prepare("SELECT sha256,package_size_bytes FROM app_release_security WHERE product_id=:id AND moderation_status='approved' AND scan_status='clean' AND sha256 <> '' LIMIT 1");
+            $integrityStmt->execute([':id' => (int)$product['id']]);
+            $integrity = $integrityStmt->fetch() ?: null;
+            if ($integrity && !preg_match('/^[a-f0-9]{64}$/', (string)$integrity['sha256'])) $integrity = null;
+            json_response(['ok' => true, 'data' => [
+                'screenshots' => $shots,
+                'versions' => $versions,
+                'specs' => $specs,
+                'reviewStats' => $stats->fetch() ?: ['review_count' => 0, 'average_rating' => 0],
+                'integrity' => $integrity ? ['sha256' => $integrity['sha256'], 'size' => (int)$integrity['package_size_bytes'], 'verified' => true] : null,
+                'canDownload' => true,
+            ]]);
         }
 
         case 'store_reviews': {
