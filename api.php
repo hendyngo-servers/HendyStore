@@ -145,8 +145,8 @@ function admin_upload(PDO $db): never
         $sha256 = (string)hash_file('sha256', $tmp);
         $objectKey = 'packages/' . $token;
         $now = date('Y-m-d H:i:s');
-        $record = $db->prepare("INSERT INTO app_security_packages(object_key,uploader_id,original_name,file_size_bytes,sha256,scan_status,created_at,updated_at)
-            VALUES(:key,:user,:name,:size,:sha,'pending',:created,:updated)
+        $record = $db->prepare("INSERT INTO app_security_packages(object_key,uploader_id,original_name,file_size_bytes,sha256,scan_status,upload_method,created_at,updated_at)
+            VALUES(:key,:user,:name,:size,:sha,'pending','server',:created,:updated)
             ON CONFLICT(object_key) DO UPDATE SET uploader_id=EXCLUDED.uploader_id,original_name=EXCLUDED.original_name,file_size_bytes=EXCLUDED.file_size_bytes,sha256=EXCLUDED.sha256,scan_status='pending',updated_at=EXCLUDED.updated_at");
         $record->execute([':key' => $objectKey, ':user' => (int)$admin['id'], ':name' => mb_substr_safe($originalName,255), ':size' => $size, ':sha' => $sha256, ':created' => $now, ':updated' => $now]);
         $scan = hendystore_security_scan_object($db, $objectKey, $sha256, $size);
