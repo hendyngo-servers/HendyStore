@@ -27,7 +27,9 @@ services:
       - key: NEON_AUTH_JWKS_URL
         sync: false
       - key: NEON_AUTH_PUBLIC_SIGNUP
-        value: "false"
+        value: "true"
+      - key: NEON_DATA_API_URL
+        value: https://ep-withered-sunset-bekyloue.apirest.c-9.us-east-2.aws.neon.tech/Hendy_Store/rest/v1
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY
