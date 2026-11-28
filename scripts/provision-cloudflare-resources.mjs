@@ -50,8 +50,8 @@ const report = [];
 const r2Name = (process.env.CF_R2_BUCKET_NAME || "").trim();
 if (process.env.CF_CREATE_R2 === "true") {
   if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(r2Name)) throw new Error("CF_R2_BUCKET_NAME must be 3-63 lowercase letters, numbers or hyphens.");
-  const buckets = listItems(parseJson(run(["r2", "bucket", "list", "--json"]), "R2 bucket list"));
-  const exists = buckets.some((item) => item.name === r2Name || item.bucketName === r2Name);
+  let exists = false;
+  try { run(["r2", "bucket", "info", r2Name]); exists = true; } catch { exists = false; }
   if (!exists) {
     run(["r2", "bucket", "create", r2Name, "--location", process.env.CF_R2_LOCATION || "apac"]);
     report.push("Created R2 bucket " + r2Name + ".");
@@ -66,18 +66,17 @@ if (process.env.CF_CREATE_R2 === "true") {
 const d1Name = (process.env.CF_D1_DATABASE_NAME || "").trim();
 if (process.env.CF_CREATE_D1 === "true") {
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(d1Name)) throw new Error("CF_D1_DATABASE_NAME is invalid.");
-  const databases = listItems(parseJson(run(["d1", "list", "--json"]), "D1 database list"));
-  let database = databases.find((item) => item.name === d1Name);
+  let database = null;
+  try { database = parseJson(run(["d1", "info", d1Name, "--json"]), "D1 database info"); } catch { database = null; }
   if (!database) {
     run(["d1", "create", d1Name, "--location", process.env.CF_D1_LOCATION || "apac"]);
-    const refreshed = listItems(parseJson(run(["d1", "list", "--json"]), "D1 database list"));
-    database = refreshed.find((item) => item.name === d1Name);
+    database = parseJson(run(["d1", "info", d1Name, "--json"]), "D1 database info");
     if (!database) throw new Error("D1 was created, but its database id could not be verified. No D1 binding was written.");
     report.push("Created an empty D1 database " + d1Name + "; no Neon data was copied.");
   } else {
     report.push("D1 database " + d1Name + " already exists; retained its data.");
   }
-  const databaseId = database.uuid || database.database_id || database.id;
+  const databaseId = database.uuid || database.database_id || database.databaseId || database.id;
   if (!databaseId) throw new Error("D1 database id is missing; refusing to write an incomplete binding.");
   const block = ["[[d1_databases]]", 'binding = "DB"', 'database_name = "' + d1Name + '"', 'database_id = "' + databaseId + '"'].join("\n");
   if (await appendBinding(block, "DB")) report.push("Added D1 binding to Worker configuration.");
@@ -122,13 +121,13 @@ let updated = current;
 if (process.env.CF_DATABASE_PROVIDER) {
   const value = process.env.CF_DATABASE_PROVIDER.toLowerCase();
   if (!["none", "postgres", "mysql", "d1"].includes(value)) throw new Error("CF_DATABASE_PROVIDER must be none, postgres, mysql or d1.");
-  updated = updated.replace(/^DATABASE_PROVIDER\\s*=\\s*"[^"]*"$/m, 'DATABASE_PROVIDER = "' + value + '"');
+  updated = updated.replace(/^DATABASE_PROVIDER\s*=\s*"[^"]*"$/m, 'DATABASE_PROVIDER = "' + value + '"');
   report.push("Selected Worker database provider " + value + ".");
 }
 if (process.env.CF_OBJECT_STORAGE_PROVIDER) {
   const value = process.env.CF_OBJECT_STORAGE_PROVIDER.toLowerCase();
   if (!["neon", "cloudfly", "r2", "s3"].includes(value)) throw new Error("CF_OBJECT_STORAGE_PROVIDER is invalid.");
-  updated = updated.replace(/^OBJECT_STORAGE_PROVIDER\\s*=\\s*"[^"]*"$/m, 'OBJECT_STORAGE_PROVIDER = "' + value + '"');
+  updated = updated.replace(/^OBJECT_STORAGE_PROVIDER\s*=\s*"[^"]*"$/m, 'OBJECT_STORAGE_PROVIDER = "' + value + '"');
   report.push("Selected Worker storage provider " + value + ".");
 }
 if (updated !== current) await writeFile(configPath, updated, "utf8");
