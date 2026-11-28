@@ -343,7 +343,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $stmt = $db->prepare("INSERT INTO app_developer_profiles(user_id,display_name,website_url,support_email,status,created_at,updated_at)
                 VALUES(:id,:display,:website,:email,'pending',:created,:updated)
                 ON CONFLICT(user_id) DO UPDATE SET display_name=EXCLUDED.display_name,website_url=EXCLUDED.website_url,support_email=EXCLUDED.support_email,
-                status=CASE WHEN app_developer_profiles.status='approved' THEN 'approved' ELSE 'pending' END,updated_at=EXCLUDED.updated_at");
+                status='pending',review_note='',reviewed_by=NULL,reviewed_at=NULL,updated_at=EXCLUDED.updated_at");
             $stmt->execute([':id' => (int)$user['id'], ':display' => $display, ':website' => $website, ':email' => $email, ':created' => $now, ':updated' => $now]);
             hendystore_security_audit($db, (int)$user['id'], 'developer_profile_submitted', 'developer', (string)$user['id']);
             json_response(['ok' => true, 'data' => ['status' => 'pending']]);
@@ -399,7 +399,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $input = request_data();
             $token = trim((string)($input['object_token'] ?? ''));
             $clientHash = strtolower(trim((string)($input['sha256'] ?? '')));
-            if (!valid_package_token($token) || !preg_match('/^[a-f0-9]{64}$/', $clientHash)) {
+            if (!valid_package_token($token) || ($clientHash !== '' && !preg_match('/^[a-f0-9]{64}$/', $clientHash))) {
                 json_response(['ok' => false, 'error' => 'Mã gói hoặc SHA-256 không hợp lệ.'], 422);
             }
             $objectKey = 'packages/' . $token;
@@ -584,14 +584,19 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
     return true;
 }
 
-function hendystore_security_track_product_view(PDO $db, int $productId): void
+function hendystore_security_track_event(PDO $db, int $productId, string $eventType): void
 {
+    if (!in_array($eventType, ['product_view','download_prepare','download_completed'], true)) return;
     hendystore_security_schema($db);
-    $user = current_user($db);
     $platform = strtolower((string)($_SERVER['HTTP_X_HENDY_PLATFORM'] ?? 'unknown'));
     if (!in_array($platform, ['windows','macos','android','linux','web','unknown'], true)) $platform = 'unknown';
     $secret = (string)env_value('APP_KEY', hash('sha256', __FILE__));
     $ipHash = hash_hmac('sha256', request_ip(), $secret);
-    $stmt = $db->prepare("INSERT INTO app_store_analytics(product_id,event_type,platform,ip_hash,created_at) VALUES(:product,'product_view',:platform,:ip,:created)");
-    $stmt->execute([':product' => $productId, ':platform' => $platform, ':ip' => $ipHash, ':created' => date('Y-m-d H:i:s')]);
+    $stmt = $db->prepare('INSERT INTO app_store_analytics(product_id,event_type,platform,ip_hash,created_at) VALUES(:product,:event,:platform,:ip,:created)');
+    $stmt->execute([':product' => $productId, ':event' => $eventType, ':platform' => $platform, ':ip' => $ipHash, ':created' => date('Y-m-d H:i:s')]);
+}
+
+function hendystore_security_track_product_view(PDO $db, int $productId): void
+{
+    hendystore_security_track_event($db, $productId, 'product_view');
 }
