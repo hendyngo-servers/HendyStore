@@ -85,7 +85,7 @@ if (object_storage_provider() !== 'cloudfly' || $cloudflyConfig['endpoint'] !== 
     throw new RuntimeException('CloudFly S3 configuration or legacy Neon fallback resolution failed.');
 }
 $cloudflyClient = neon_s3_client();
-if (!$cloudflyClient instanceof \\Aws\\S3\\S3Client) {
+if (!$cloudflyClient instanceof \Aws\S3\S3Client) {
     throw new RuntimeException('CloudFly provider must instantiate the AWS-compatible S3 SDK client.');
 }
 $_ENV['OBJECT_STORAGE_BUCKET'] = 'invalid.bucket.name';
