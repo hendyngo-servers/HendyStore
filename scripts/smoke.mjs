@@ -39,6 +39,10 @@ for (const token of [
   "moderation_status",
   "scan_status",
   "package_size_bytes",
+  "upload_method",
+  "moderation_status",
+  "developer_rollback",
+  "developer_review_reply",
 ]) {
   assert.ok(securitySource.includes(token), "Missing Trust & Safety integration: " + token);
 }
