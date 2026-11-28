@@ -554,7 +554,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $minOs = trim((string)($input['min_os'] ?? ''));
             $packageUrl = trim((string)($input['package_url'] ?? ''));
             $size = max(0, (int)($input['package_size_bytes'] ?? 0));
-            $allowedPlatforms = ['windows', 'macos', 'android', 'linux', 'web', 'universal'];
+            $allowedPlatforms = ['windows', 'macos', 'android', 'ios', 'linux', 'web', 'universal'];
             $allowedArch = ['x64', 'x86', 'arm64', 'armv7', 'universal'];
             if (!$product || $version === '' || strlen($version) > 60 || strlen($notes) > 12000 || strlen($minOs) > 120 || !in_array($platform, $allowedPlatforms, true) || !in_array($architecture, $allowedArch, true) || $packageUrl === '' || !hendystore_feature_safe_package_url($packageUrl)) {
                 json_response(['ok' => false, 'error' => 'Thông tin phiên bản hoặc gói cài đặt không hợp lệ.'], 422);
