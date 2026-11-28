@@ -9,7 +9,7 @@ function notify(message) {
   toast.textContent = message; toast.classList.add('show');
   window.setTimeout(() => toast.classList.remove('show'), 3000);
 }
-async function call(action, method = 'GET', body = null) {
+async function call(action, method = 'GET', body = null, retryCsrf = true) {
   const url = new URL(api); url.searchParams.set('action', action);
   const headers = { Accept: 'application/json' };
   if (method !== 'GET') {
@@ -22,6 +22,11 @@ async function call(action, method = 'GET', body = null) {
   } catch (_) {}
   const response = await fetch(url, { method, credentials: 'same-origin', headers, body: body ? JSON.stringify(body) : undefined });
   let result; try { result = await response.json(); } catch (_) { throw new Error('Dữ liệu API không hợp lệ.'); }
+  if (response.status === 419 && method !== 'GET' && retryCsrf) {
+    const refreshed = await call('me', 'GET', null, false);
+    state.csrf = refreshed.data?.csrfToken || '';
+    return call(action, method, body, false);
+  }
   if (!response.ok || !result.ok) throw new Error(result.error || 'Yêu cầu không thành công.');
   if (result.data?.csrfToken) state.csrf = result.data.csrfToken;
   return result;

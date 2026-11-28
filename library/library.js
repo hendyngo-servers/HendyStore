@@ -8,7 +8,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
 }[char]));
 
-async function call(action, method='GET', body=null) {
+async function call(action, method='GET', body=null, retryCsrf=true) {
   const url = new URL(apiBase);
   url.searchParams.set('action', action);
   const headers = {Accept:'application/json'};
@@ -29,7 +29,13 @@ async function call(action, method='GET', body=null) {
   let data;
   try { data = await response.json(); }
   catch (_) { throw new Error('Máy chủ trả về dữ liệu không hợp lệ.'); }
+  if (response.status === 419 && method !== 'GET' && retryCsrf) {
+    const refreshed = await call('me', 'GET', null, false);
+    csrfToken = refreshed.data?.csrfToken || '';
+    return call(action, method, body, false);
+  }
   if (!response.ok || !data.ok) throw new Error(data.error || 'Yêu cầu thất bại.');
+  if (data.data?.csrfToken) csrfToken = data.data.csrfToken;
   return data;
 }
 function imageUrl(value) {

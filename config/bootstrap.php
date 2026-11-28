@@ -354,7 +354,7 @@ function initialize_schema(PDO $db, string $driver): void
     migrate_legacy_demo_products($db);
 }
 
-final class NeonPostgresSessionHandler implements SessionHandlerInterface
+final class NeonPostgresSessionHandler implements SessionHandlerInterface, SessionUpdateTimestampHandlerInterface
 {
     public function __construct(private PDO $db) {}
     public function open(string $path, string $name): bool { return true; }
@@ -393,46 +393,158 @@ final class NeonPostgresSessionHandler implements SessionHandlerInterface
         $stmt->execute([':id' => $id, ':now' => time()]);
         return (bool) $stmt->fetchColumn();
     }
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        $lifetime = max(300, (int) ini_get('session.gc_maxlifetime'));
+        $stmt = $this->db->prepare('UPDATE app_sessions SET expires_at = :expires WHERE session_id = :id');
+        $stmt->execute([':id' => $id, ':expires' => time() + $lifetime]);
+        if ($stmt->rowCount() > 0) return true;
+        // If the row expired or disappeared between validateId and timestamp
+        // renewal, recreate it with the current serialized session data.
+        return $this->write($id, $data);
+    }
+}
+
+function object_storage_provider(): string
+{
+    $provider = strtolower(trim((string) env_value('OBJECT_STORAGE_PROVIDER', 'neon')));
+    if (!in_array($provider, ['neon', 'cloudfly'], true)) {
+        throw new RuntimeException('OBJECT_STORAGE_PROVIDER must be either neon or cloudfly.');
+    }
+    return $provider;
+}
+
+/**
+ * Resolve one S3-compatible provider without exposing credentials to callers.
+ * CloudFly's official endpoint/region/signature settings are documented at
+ * https://cloudfly.vn/docs/object-storage/huong-dan-su-dung-api-de-ket-noi-object-storage
+ */
+function object_storage_connection_config(string $provider): array
+{
+    if ($provider === 'cloudfly') {
+        $endpoint = rtrim((string) env_value('OBJECT_STORAGE_ENDPOINT', 'https://s3.cloudfly.vn'), '/');
+        $region = trim((string) env_value('OBJECT_STORAGE_REGION', 'hn'));
+        $bucket = trim((string) env_value('OBJECT_STORAGE_BUCKET', ''));
+        $accessKey = trim((string) env_value('OBJECT_STORAGE_ACCESS_KEY_ID', ''));
+        $secretKey = (string) env_value('OBJECT_STORAGE_SECRET_ACCESS_KEY', '');
+        $sessionToken = (string) env_value('OBJECT_STORAGE_SESSION_TOKEN', '');
+        $parts = parse_url($endpoint);
+        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])
+            || trim((string)($parts['path'] ?? ''), '/') !== '' || isset($parts['user']) || isset($parts['pass'])
+            || isset($parts['query']) || isset($parts['fragment'])) {
+            throw new RuntimeException('OBJECT_STORAGE_ENDPOINT must be an HTTPS S3 endpoint.');
+        }
+        // CloudFly's bucket naming guidance: lowercase letters, digits and hyphens.
+        if ($bucket === '' || !preg_match('/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/', $bucket)) {
+            throw new RuntimeException('OBJECT_STORAGE_BUCKET is invalid for CloudFly.');
+        }
+        if ($accessKey === '' || $secretKey === '' || $region === '') {
+            throw new RuntimeException('CloudFly Object Storage credentials are not fully configured.');
+        }
+        return [
+            'provider' => 'cloudfly',
+            'endpoint' => $endpoint,
+            'region' => $region,
+            'bucket' => $bucket,
+            'access_key' => $accessKey,
+            'secret_key' => $secretKey,
+            'session_token' => $sessionToken,
+            'path_style' => env_bool('OBJECT_STORAGE_FORCE_PATH_STYLE', true),
+        ];
+    }
+
+    if ($provider === 'neon') {
+        $endpoint = rtrim((string) env_value('AWS_ENDPOINT_URL_S3', ''), '/');
+        $region = trim((string) env_value('AWS_REGION', ''));
+        $bucket = trim((string) env_value('NEON_STORAGE_BUCKET', ''));
+        $accessKey = trim((string) env_value('AWS_ACCESS_KEY_ID', ''));
+        $secretKey = (string) env_value('AWS_SECRET_ACCESS_KEY', '');
+        $parts = parse_url($endpoint);
+        if ($endpoint === '' || !is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])
+            || trim((string)($parts['path'] ?? ''), '/') !== '' || isset($parts['user']) || isset($parts['pass'])
+            || isset($parts['query']) || isset($parts['fragment']) || $region === '' || $bucket === ''
+            || $accessKey === '' || $secretKey === '' || !preg_match('/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/', $bucket)) {
+            throw new RuntimeException('Neon Object Storage credentials are not fully configured.');
+        }
+        return [
+            'provider' => 'neon',
+            'endpoint' => $endpoint,
+            'region' => $region,
+            'bucket' => $bucket,
+            'access_key' => $accessKey,
+            'secret_key' => $secretKey,
+            'session_token' => '',
+            'path_style' => env_bool('NEON_STORAGE_FORCE_PATH_STYLE', true),
+        ];
+    }
+
+    throw new RuntimeException('Unsupported Object Storage provider.');
+}
+
+function object_storage_configured(string $provider): bool
+{
+    try {
+        object_storage_connection_config($provider);
+        return class_exists(\Aws\S3\S3Client::class);
+    } catch (Throwable $error) {
+        return false;
+    }
+}
+
+function object_storage_s3_client(string $provider): \Aws\S3\S3Client
+{
+    static $clients = [];
+    if (isset($clients[$provider]) && $clients[$provider] instanceof \Aws\S3\S3Client) return $clients[$provider];
+    if (!object_storage_configured($provider)) {
+        throw new RuntimeException(ucfirst($provider) . ' Object Storage is not configured. Check the provider endpoint, bucket and Render secrets.');
+    }
+    $config = object_storage_connection_config($provider);
+    $credentials = ['key' => $config['access_key'], 'secret' => $config['secret_key']];
+    if ($config['session_token'] !== '') $credentials['token'] = $config['session_token'];
+
+    $clientOptions = [
+        'version' => 'latest',
+        'region' => $config['region'],
+        'endpoint' => $config['endpoint'],
+        'credentials' => $credentials,
+        'use_path_style_endpoint' => $config['path_style'],
+        'http' => ['connect_timeout' => 5, 'timeout' => 20],
+    ];
+    if ($provider === 'cloudfly') {
+        // CloudFly's PHP SDK example uses region "hn" and Signature V4.
+        $clientOptions['signature_version'] = 'v4';
+    }
+    $clients[$provider] = new \Aws\S3\S3Client($clientOptions);
+    return $clients[$provider];
+}
+
+function object_storage_legacy_neon_fallback_enabled(): bool
+{
+    return object_storage_provider() === 'cloudfly'
+        && env_bool('OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK', true)
+        && object_storage_configured('neon');
+}
+
+function object_storage_is_missing(\Aws\Exception\AwsException $error): bool
+{
+    return $error->getStatusCode() === 404
+        || in_array($error->getAwsErrorCode(), ['NoSuchKey', 'NotFound'], true);
 }
 
 function neon_object_storage_enabled(): bool
 {
-    return env_value('AWS_ACCESS_KEY_ID') !== null
-        && env_value('AWS_SECRET_ACCESS_KEY') !== null
-        && env_value('AWS_ENDPOINT_URL_S3') !== null
-        && env_value('AWS_REGION') !== null
-        && env_value('NEON_STORAGE_BUCKET') !== null
-        && class_exists(\Aws\S3\S3Client::class);
+    return object_storage_configured(object_storage_provider());
 }
 
 function neon_s3_client(): \Aws\S3\S3Client
 {
-    static $client = null;
-    if ($client instanceof \Aws\S3\S3Client) return $client;
-    if (!neon_object_storage_enabled()) {
-        throw new RuntimeException('Neon Object Storage is not configured. Run neon deploy and set AWS_* variables in Render.');
-    }
-    $client = new \Aws\S3\S3Client([
-        'version' => 'latest',
-        'region' => (string) env_value('AWS_REGION', 'us-east-2'),
-        'endpoint' => (string) env_value('AWS_ENDPOINT_URL_S3'),
-        'credentials' => [
-            'key' => (string) env_value('AWS_ACCESS_KEY_ID'),
-            'secret' => (string) env_value('AWS_SECRET_ACCESS_KEY'),
-        ],
-        'use_path_style_endpoint' => env_bool('NEON_STORAGE_FORCE_PATH_STYLE', true),
-        'http' => ['connect_timeout' => 5, 'timeout' => 20],
-    ]);
-    return $client;
+    return object_storage_s3_client(object_storage_provider());
 }
 
 function neon_storage_bucket(): string
 {
-    $bucket = (string) env_value('NEON_STORAGE_BUCKET', '');
-    if ($bucket === '' || !preg_match('/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/', $bucket)) {
-        throw new RuntimeException('NEON_STORAGE_BUCKET is invalid.');
-    }
-    return $bucket;
+    $config = object_storage_connection_config(object_storage_provider());
+    return (string) $config['bucket'];
 }
 
 function neon_storage_probe(): bool
@@ -470,8 +582,18 @@ function neon_storage_exists(string $key): bool
         neon_s3_client()->headObject(['Bucket' => neon_storage_bucket(), 'Key' => $key]);
         return true;
     } catch (\Aws\Exception\AwsException $error) {
-        if ($error->getStatusCode() === 404 || $error->getAwsErrorCode() === 'NoSuchKey' || $error->getAwsErrorCode() === 'NotFound') return false;
-        throw $error;
+        if (!object_storage_is_missing($error)) throw $error;
+        if (!object_storage_legacy_neon_fallback_enabled()) return false;
+        try {
+            object_storage_s3_client('neon')->headObject([
+                'Bucket' => (string) env_value('NEON_STORAGE_BUCKET', ''),
+                'Key' => $key,
+            ]);
+            return true;
+        } catch (\Aws\Exception\AwsException $legacyError) {
+            if (object_storage_is_missing($legacyError)) return false;
+            throw $legacyError;
+        }
     }
 }
 
@@ -480,7 +602,15 @@ function neon_storage_get(string $key): \Aws\Result
     if (!preg_match('#^(media|packages)/[a-f0-9]{32}\.[a-z0-9]{2,8}$#', $key)) {
         throw new RuntimeException('Invalid storage object key.');
     }
-    return neon_s3_client()->getObject(['Bucket' => neon_storage_bucket(), 'Key' => $key]);
+    try {
+        return neon_s3_client()->getObject(['Bucket' => neon_storage_bucket(), 'Key' => $key]);
+    } catch (\Aws\Exception\AwsException $error) {
+        if (!object_storage_is_missing($error) || !object_storage_legacy_neon_fallback_enabled()) throw $error;
+        return object_storage_s3_client('neon')->getObject([
+            'Bucket' => (string) env_value('NEON_STORAGE_BUCKET', ''),
+            'Key' => $key,
+        ]);
+    }
 }
 
 function neon_auth_bearer_token(): ?string
