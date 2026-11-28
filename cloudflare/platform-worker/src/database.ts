@@ -37,11 +37,7 @@ export async function probeDatabase(env: Env): Promise<{ provider: DatabaseProvi
     }
   }
 
-  const connection = await mysql.createConnection({
-    uri: env.MYSQL_HYPERDRIVE!.connectionString,
-    connectTimeout: 5000,
-    enableKeepAlive: true
-  });
+  const connection = await mysql.createConnection(env.MYSQL_HYPERDRIVE!.connectionString);
   try {
     await connection.query("SELECT 1");
     return { provider, ok: true };
