@@ -2,31 +2,36 @@
 'use strict';
 const $ = (s) => document.querySelector(s);
 const snippets = {
-  cloudfly: \`OBJECT_STORAGE_PROVIDER=cloudfly
-OBJECT_STORAGE_ENDPOINT=https://s3.cloudfly.vn
-OBJECT_STORAGE_REGION=hn
-OBJECT_STORAGE_BUCKET=
-OBJECT_STORAGE_ACCESS_KEY_ID=
-OBJECT_STORAGE_SECRET_ACCESS_KEY=
-OBJECT_STORAGE_SESSION_TOKEN=
-OBJECT_STORAGE_FORCE_PATH_STYLE=true
-OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true\`,
-  r2: \`OBJECT_STORAGE_PROVIDER=r2
-CLOUDFLARE_ACCOUNT_ID=
-OBJECT_STORAGE_ENDPOINT=
-OBJECT_STORAGE_REGION=auto
-OBJECT_STORAGE_BUCKET=
-OBJECT_STORAGE_ACCESS_KEY_ID=
-OBJECT_STORAGE_SECRET_ACCESS_KEY=
-OBJECT_STORAGE_SESSION_TOKEN=
-OBJECT_STORAGE_FORCE_PATH_STYLE=true
-OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true\`,
-  database: \`# Render / PHP currently uses Neon PostgreSQL
-DATABASE_URL=postgresql://<role>:<password>@<host>/<database>?sslmode=require
-# Cloudflare Workers use a Hyperdrive binding (secret connection string stays in Cloudflare)
-DATABASE_PROVIDER=postgres
-# Other Worker adapters: DATABASE_PROVIDER=mysql or d1
-\`
+  cloudfly: [
+    "OBJECT_STORAGE_PROVIDER=cloudfly",
+    "OBJECT_STORAGE_ENDPOINT=https://s3.cloudfly.vn",
+    "OBJECT_STORAGE_REGION=hn",
+    "OBJECT_STORAGE_BUCKET=",
+    "OBJECT_STORAGE_ACCESS_KEY_ID=",
+    "OBJECT_STORAGE_SECRET_ACCESS_KEY=",
+    "OBJECT_STORAGE_SESSION_TOKEN=",
+    "OBJECT_STORAGE_FORCE_PATH_STYLE=true",
+    "OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true"
+  ].join("\n"),
+  r2: [
+    "OBJECT_STORAGE_PROVIDER=r2",
+    "CLOUDFLARE_ACCOUNT_ID=",
+    "OBJECT_STORAGE_ENDPOINT=",
+    "OBJECT_STORAGE_REGION=auto",
+    "OBJECT_STORAGE_BUCKET=",
+    "OBJECT_STORAGE_ACCESS_KEY_ID=",
+    "OBJECT_STORAGE_SECRET_ACCESS_KEY=",
+    "OBJECT_STORAGE_SESSION_TOKEN=",
+    "OBJECT_STORAGE_FORCE_PATH_STYLE=true",
+    "OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK=true"
+  ].join("\n"),
+  database: [
+    "# Render / PHP currently uses Neon PostgreSQL",
+    "DATABASE_URL=postgresql://<role>:<password>@<host>/<database>?sslmode=require",
+    "# Cloudflare Workers use a Hyperdrive binding; keep its connection string in Cloudflare Secrets",
+    "DATABASE_PROVIDER=postgres",
+    "# Other Worker adapters: DATABASE_PROVIDER=mysql or d1"
+  ].join("\n")
 };
 function show(text) { const node=$('#configPreview'); if(node)node.textContent=text; }
 async function copy(text) {
