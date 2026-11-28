@@ -518,6 +518,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                 ':expires_at' => time() + 600,
                 ':created_at' => date('Y-m-d H:i:s'),
             ]);
+            hendystore_security_track_event($db, (int)$product['id'], 'download_prepare');
             json_response(['ok' => true, 'data' => [
                 'url' => app_base_url() . '/api.php?action=store_version_download&grant=' . rawurlencode($token),
                 'expiresIn' => 600,
