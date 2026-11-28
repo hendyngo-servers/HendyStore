@@ -42,6 +42,8 @@ for (const token of [
   "api_public_catalog",
   "security_barrier = true",
   "GRANT SELECT ON TABLE public.api_public_catalog TO anonymous, authenticated",
+  "price_type",
+  "price_amount_vnd",
 ]) {
   assert.ok(dataApiMigration.includes(token), "Missing least-privilege Data API migration: " + token);
 }

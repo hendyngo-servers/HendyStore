@@ -114,7 +114,7 @@ const ready = (async () => {
     const endpoint = new URL("api_public_catalog", base.replace(/\/+$/, "") + "/");
     const safePage = Math.max(1, Math.min(100000, Number.parseInt(page, 10) || 1));
     const safeLimit = Math.max(1, Math.min(48, Number.parseInt(limit, 10) || 18));
-    endpoint.searchParams.set("select", "id,slug,title,developer,category,short_description,version,platform,icon,cover,downloads,rating,featured,updated_at");
+    endpoint.searchParams.set("select", "id,slug,title,developer,category,short_description,version,platform,icon,cover,downloads,rating,featured,updated_at,price_type,price_amount_vnd");
     endpoint.searchParams.set("limit", String(safeLimit));
     endpoint.searchParams.set("offset", String((safePage - 1) * safeLimit));
     endpoint.searchParams.set("order", ({
@@ -166,8 +166,8 @@ const ready = (async () => {
         shortDescription: row.short_description,
         version: row.version,
         platform: row.platform,
-        priceType: "Free",
-        priceAmountVnd: 0,
+        priceType: row.price_type || "Free",
+        priceAmountVnd: Number(row.price_amount_vnd || 0),
         icon: row.icon,
         cover: row.cover,
         downloads: Number(row.downloads || 0),
