@@ -11,6 +11,7 @@ export interface Env {
   OBJECT_STORAGE_PROVIDER?: "neon" | "cloudfly" | "r2" | "s3";
   OBJECT_STORAGE_ENDPOINT?: string;
   OBJECT_STORAGE_REGION?: string;
+  OBJECT_STORAGE_JURISDICTION?: "eu" | "us" | "fedramp" | "";
   OBJECT_STORAGE_BUCKET?: string;
   OBJECT_STORAGE_ACCESS_KEY_ID?: string;
   OBJECT_STORAGE_SECRET_ACCESS_KEY?: string;
