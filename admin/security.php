@@ -14,7 +14,7 @@ header('Cache-Control: no-store, private');
 <body>
 <header class="site-header"><a class="brand" href="../"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span class="brand-name">Hendy <b>Store</b></span></a><nav class="main-nav"><a class="nav-link" href="../">Cửa hàng</a><a class="nav-link" href="./">Quản trị</a><a class="nav-link active" href="security.php">Kiểm duyệt & Bảo mật</a></nav><div class="header-actions"><a class="account-button" href="./">← Admin</a></div></header>
 <main class="sec-shell">
-<section class="sec-hero"><span class="sec-kicker">TRUST · SAFETY · ADMIN</span><h1>Kiểm duyệt & Bảo mật</h1><p>Chỉ ứng dụng đã vượt qua kiểm tra toàn vẹn, quét mã độc và xét duyệt thủ công mới được xuất bản ra Storefront.</p></section>
+<section class="sec-hero"><span class="sec-kicker">TRUST · SAFETY · ADMIN</span><h1>Kiểm duyệt & Bảo mật</h1><p>Chỉ ứng dụng đã vượt qua kiểm tra toàn vẹn, quét mã độc và xét duyệt thủ công mới được xuất bản ra Storefront. Với upload presigned, hệ thống yêu cầu chờ 6 phút để URL ghi hết hạn trước khi duyệt.</p></section>
 <div id="securityLogin" class="sec-section" hidden><h2>Yêu cầu quyền quản trị</h2><p>Vui lòng đăng nhập từ Admin Console trước khi quản lý hàng chờ.</p><a class="button button-primary" href="./">Đến trang đăng nhập Admin</a></div>
 <section class="sec-section"><span class="sec-kicker">DEVELOPER REVIEW</span><h2>Hồ sơ nhà phát triển chờ duyệt</h2><div id="developerQueue" class="sec-list"><div class="sec-state">Đang tải hàng chờ…</div></div></section>
 <section class="sec-section"><span class="sec-kicker">RELEASE REVIEW</span><h2>Ứng dụng chờ xuất bản</h2><div id="releaseQueue" class="sec-list"><div class="sec-state">Đang tải hàng chờ…</div></div></section>
