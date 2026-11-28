@@ -9,13 +9,14 @@ function detectPlatform() {
   const ua = navigator.userAgent || '';
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
   if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1)) return 'ios';
   if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows';
   if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) return 'macos';
   if (/Linux/i.test(platform) || /Linux/i.test(ua)) return 'linux';
   return 'web';
 }
 function platformLabel(value) {
-  return ({windows:'Windows',macos:'macOS',android:'Android',linux:'Linux',web:'Web',universal:'Mọi nền tảng'})[value] || value;
+  return ({windows:'Windows',macos:'macOS',android:'Android',ios:'iOS',linux:'Linux',web:'Web',universal:'Mọi nền tảng'})[value] || value;
 }
 function formatBytes(value) {
   const bytes = Number(value || 0);
@@ -93,6 +94,15 @@ function renderDownload(versions, product) {
   const selectBuild = () => {
     const platform = select.value;
     const chosen = chooseVersion(versions, platform);
+    if (platform === 'ios') {
+      selectedBuild = null;
+      button.href = '#';
+      button.setAttribute('aria-disabled','true');
+      button.classList.add('store-disabled');
+      message.textContent = 'iOS: ứng dụng cần phân phối qua App Store, TestFlight hoặc MDM. Hendy Store không sideload IPA trực tiếp.';
+      button.textContent = 'Xem hướng dẫn iOS';
+      return;
+    }
     if (!chosen) {
       selectedBuild = null;
       button.href = '#';
