@@ -18,6 +18,16 @@ LEGACY_ORIGIN_PROXY = "true"
 # database_name = "hendy-store-edge"
 # database_id = "<D1_DATABASE_ID>"
 #
+# Optional KV cache for the public catalogue only.
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "<KV_NAMESPACE_ID>"
+#
+# Optional asynchronous events queue; no consumer is deployed until a consumer handler is added.
+# [[queues.producers]]
+# binding = "EVENTS_QUEUE"
+# queue = "hendy-store-events"
+#
 # [[r2_buckets]]
 # binding = "R2"
 # bucket_name = "<R2_BUCKET_NAME>"
