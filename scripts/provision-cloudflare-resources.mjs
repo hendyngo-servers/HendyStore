@@ -28,12 +28,15 @@ function run(args) {
 async function readConfig() { return readFile(configPath, "utf8"); }
 async function appendBinding(block, binding) {
   const current = await readConfig();
-  const escaped = binding.replace(/[.*+?^\x24{}()|[\]\\]/g, "\\$&");
-  const activeBinding = new RegExp("^\\s*binding\\s*=\\s*[\"\\']" + escaped + "[\"\\']\\s*$", "m");
-  const match = activeBinding.exec(current);
-  if (match) {
-    const nextSection = current.indexOf("\n[[", match.index + match[0].length);
-    const section = current.slice(match.index, nextSection < 0 ? current.length : nextSection);
+  const lines = current.split(/\r?\n/);
+  const bindingLineIndex = lines.findIndex((line) =>
+    line.trim() === 'binding = "' + binding + '"' ||
+    line.trim() === "binding = '" + binding + "'"
+  );
+  if (bindingLineIndex >= 0) {
+    let sectionEnd = bindingLineIndex + 1;
+    while (sectionEnd < lines.length && !lines[sectionEnd].trimStart().startsWith("[[")) sectionEnd += 1;
+    const section = lines.slice(bindingLineIndex, sectionEnd).join("\n");
     const expected = block.trim().split(/\r?\n/).slice(2).filter(Boolean);
     if (!expected.every((line) => section.includes(line))) {
       throw new Error("Cloudflare binding " + binding + " already points to a different resource; refusing to overwrite it.");
@@ -43,7 +46,6 @@ async function appendBinding(block, binding) {
   await writeFile(configPath, current.trimEnd() + "\n\n" + block.trim() + "\n", "utf8");
   return true;
 }
-
 function parseJson(text, label) {
   try { return JSON.parse(text); } catch { throw new Error("Could not safely parse Cloudflare " + label + " output."); }
 }
@@ -80,7 +82,7 @@ if (kvId) {
   if (await appendBinding(block, "CACHE")) report.push("Added existing KV namespace binding CACHE.");
 } else if (process.env.CF_CREATE_KV === "true") {
   const current = await readConfig();
-  if (/^\s*binding\s*=\s*["']CACHE["']\s*$/m.test(current)) {
+  if (current.split(/\r?\n/).some((line) => line.trim() === 'binding = "CACHE"')) {
     throw new Error("CACHE binding already exists. Pass CF_KV_NAMESPACE_ID to attach an existing namespace instead of creating a replacement.");
   }
   run(["kv", "namespace", "create", kvName, "--binding", "CACHE", "--update-config", "--config", configPath]);
@@ -153,13 +155,21 @@ let updated = current;
 if (process.env.CF_DATABASE_PROVIDER) {
   const value = process.env.CF_DATABASE_PROVIDER.toLowerCase();
   if (!["none", "postgres", "mysql", "d1"].includes(value)) throw new Error("CF_DATABASE_PROVIDER must be none, postgres, mysql or d1.");
-  updated = updated.replace(/^DATABASE_PROVIDER\s*=\s*"[^"]*"$/m, 'DATABASE_PROVIDER = "' + value + '"');
+  const lines = updated.split(/\r?\n/);
+  const index = lines.findIndex((line) => line.trimStart().startsWith("DATABASE_PROVIDER ="));
+  if (index < 0) throw new Error("DATABASE_PROVIDER is missing from Worker TOML.");
+  lines[index] = 'DATABASE_PROVIDER = "' + value + '"';
+  updated = lines.join("\\n");
   report.push("Selected Worker database provider " + value + ".");
 }
 if (process.env.CF_OBJECT_STORAGE_PROVIDER) {
   const value = process.env.CF_OBJECT_STORAGE_PROVIDER.toLowerCase();
   if (!["neon", "cloudfly", "r2", "s3"].includes(value)) throw new Error("CF_OBJECT_STORAGE_PROVIDER is invalid.");
-  updated = updated.replace(/^OBJECT_STORAGE_PROVIDER\s*=\s*"[^"]*"$/m, 'OBJECT_STORAGE_PROVIDER = "' + value + '"');
+  const lines = updated.split(/\r?\n/);
+  const index = lines.findIndex((line) => line.trimStart().startsWith("OBJECT_STORAGE_PROVIDER ="));
+  if (index < 0) throw new Error("OBJECT_STORAGE_PROVIDER is missing from Worker TOML.");
+  lines[index] = 'OBJECT_STORAGE_PROVIDER = "' + value + '"';
+  updated = lines.join("\\n");
   report.push("Selected Worker storage provider " + value + ".");
 }
 if (updated !== current) await writeFile(configPath, updated, "utf8");
