@@ -31,7 +31,6 @@ function renderAccount() {
   if(menu) {
     $('#accountMenuName').textContent=user?.name||'Tài khoản';
     $('#accountMenuEmail').textContent=user?.email||'';
-    $('#accountAdminLink').hidden=user?.role!=='admin';
     menu.hidden=true;
   }
   $('#accountButton')?.setAttribute('aria-expanded','false');
