@@ -10,8 +10,6 @@
 | Object Storage | Package và media riêng tư | Adapter Neon/CloudFly/R2/S3; phải có bucket private và HeadBucket pass trước khi đổi provider |
 | Cloudflare account | Workers, Pages, R2, D1, KV, Queues | Tài khoản đã kết nối; chưa có Zone/domain tùy chỉnh |
 | Next.js Storefront | SSR, SEO, metadata ứng dụng | Build Next.js và OpenNext đã pass CI; chưa xác nhận deploy production |
-| Python package worker | Parser/antivirus process riêng | Không có mã worker Python đang chạy trong repository |
-| Azure Front Door / Azure SQL / Azure Blob | Azure infrastructure | Không dùng trong kiến trúc đã chọn |
 
 Neon là nguồn dữ liệu canonical. Không tạo bản ghi người dùng, sản phẩm, đơn hàng hay lịch sử tải thứ hai tại D1. Không bật dual-write.
 
@@ -42,11 +40,11 @@ flowchart TB
 - Cloudflare Pages phục vụ static assets và Pages Functions/Advanced Mode proxy. PHP không chạy trực tiếp trên Pages hoặc Workers.
 - \`workers.dev\` và \`pages.dev\` có thể dùng khi chưa có Zone. Custom domain chỉ cấu hình sau khi tài khoản có Zone đang hoạt động và DNS thuộc quyền kiểm soát.
 
-## Database adapters — không dùng Hyperdrive
+## Database adapters — origin and D1
 
 ### \`origin\` — mặc định production
 
-Worker gọi \`HENDY_API_ORIGIN=https://hendystore.onrender.com\`. Neon credentials chỉ nằm ở Render. Đây là chế độ production được chọn, không cần Hyperdrive.
+Worker gọi \`HENDY_API_ORIGIN=https://hendystore.onrender.com\`. Neon credentials chỉ nằm ở Render. Đây là chế độ production được chọn.
 
 ### D1 — dữ liệu edge tách biệt
 
@@ -56,7 +54,7 @@ Worker dùng binding \`DB\` và truy vấn native SQLite/D1. D1 độc lập v�
 - Không tự sao chép schema hoặc rows từ Neon.
 - Không chuyển \`DATABASE_PROVIDER\` sang D1 cho API nghiệp vụ hiện có.
 
-MySQL/MariaDB/Hyperdrive không phải runtime database adapter của Cloudflare Worker trong thiết kế này. PDO parser cũ trong PHP không đồng nghĩa mọi query PHP chạy được với MySQL.
+Worker chỉ dùng HTTPS origin hoặc native D1 binding. Neon PostgreSQL giữ vai trò cơ sở dữ liệu nghiệp vụ.
 
 ## Object Storage
 
@@ -88,7 +86,6 @@ Quy tắc chuyển:
 
 - PHP \`features/security.php\` thực hiện SHA-256 và gọi VirusTotal API từ server. \`VIRUSTOTAL_API_KEY\` chỉ ở Render Environment.
 - Package mới ở trạng thái private/pending; chỉ release có scan sạch và được Admin duyệt mới được xuất bản.
-- Không có Python package parser/antivirus worker tách riêng; không triển khai hoặc duy trì kiến trúc đó.
 - Không thực thi installer/APK do người dùng upload trên máy chủ.
 - Duy trì kiểm tra chữ ký, checksum, MIME, kích thước, quyền phân phối và trạng thái quarantine.
 
