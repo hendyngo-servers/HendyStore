@@ -17,7 +17,9 @@ SELECT
   downloads,
   rating,
   featured,
-  updated_at
+  updated_at,
+  price_type,
+  price_amount_vnd
 FROM public.products
 WHERE status = 'published';
 
