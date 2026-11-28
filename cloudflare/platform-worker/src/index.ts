@@ -92,6 +92,14 @@ async function platformHealth(env: Env): Promise<Response> {
   } catch (error) {
     checks.database = { ok: false, error: error instanceof Error ? error.message : "Database probe failed." };
   }
+  if (env.DB) {
+    try {
+      await env.DB.prepare("SELECT 1 AS ok").first();
+      checks.d1 = { provider: "d1", ok: true };
+    } catch {
+      checks.d1 = { provider: "d1", ok: false };
+    }
+  }
   try {
     checks.storage = await probeStorage(env);
   } catch (error) {
@@ -121,7 +129,6 @@ export default {
           d1: Boolean(env.DB),
           r2: Boolean(env.R2),
           kv: Boolean(env.CACHE),
-          eventsQueue: Boolean(env.EVENTS_QUEUE)
         }
       }));
     }
