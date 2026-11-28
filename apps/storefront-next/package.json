@@ -8,8 +8,7 @@
     "typecheck": "tsc --noEmit",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare deploy",
-    "typecheck": "tsc --noEmit"
+    "cf:deploy": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "1.20.19",
@@ -26,5 +25,7 @@
     "typescript": "^5.9.3",
     "wrangler": "4.168.0"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }
