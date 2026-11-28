@@ -618,7 +618,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 if (($verified['status'] ?? '') !== 'clean' || !isset($verified['sha256']) || !hash_equals((string)$release['sha256'], (string)$verified['sha256'])) {
                     $block = $db->prepare("UPDATE products SET status='pending',featured=0,updated_at=:now WHERE id=:id");
                     $block->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
-                    $scanUpdate = $db->prepare('UPDATE app_release_security SET scan_status=:status,sha256=:sha,size=:size,updated_at=:now WHERE product_id=:id');
+                    $scanUpdate = $db->prepare('UPDATE app_release_security SET scan_status=:status,sha256=:sha,package_size_bytes=:size,updated_at=:now WHERE product_id=:id');
                     $scanUpdate->execute([':status' => (string)($verified['status'] ?? 'integrity_error'), ':sha' => (string)($verified['sha256'] ?? ''), ':size' => (int)($verified['size'] ?? 0), ':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
                     json_response(['ok' => false, 'error' => 'Gói đã thay đổi hoặc chưa vượt qua lần quét xác minh cuối. Ứng dụng vẫn bị khóa ở trạng thái chờ.'], 409);
                 }
