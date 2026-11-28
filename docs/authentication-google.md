@@ -21,7 +21,7 @@
 
 1. In Google Cloud Console, create an OAuth 2.0 Client ID of type **Web application**.
 2. Add `https://hendystore.onrender.com` to Authorized JavaScript origins.
-3. In Authorized redirect URIs, add the exact callback shown by Neon Auth. It is the Neon Auth base URL followed by `/callback/google`, not the HendyStore homepage URL.
+3. In Authorized redirect URIs, add the exact callback shown by Neon Auth. For the current production Auth base URL, the expected callback is `https://ep-withered-sunset-bekyloue.neonauth.c-9.us-east-2.aws.neon.tech/neondb/auth/callback/google`. Confirm the callback displayed by Neon Auth before saving it in Google Cloud; it is not the HendyStore homepage URL.
 4. In Neon Console → project → production branch → Auth → OAuth providers, configure Google using that Client ID and Client Secret. Never place the Client Secret in this repository, a browser bundle, or chat.
 5. Confirm `https://hendystore.onrender.com` is listed in Neon Auth trusted domains; it has been added for the production branch.
 6. Set Render variable `GOOGLE_OAUTH_ENABLED=true` only after the Google provider is saved and tested. Leave it false until then.

@@ -30,6 +30,14 @@ Các công nghệ dưới đây là lựa chọn nâng cấp, không phải thà
 - **Clerk/Auth0/Supabase Auth:** là các lựa chọn thay thế Neon Auth, không bật nhiều nhà cung cấp cùng lúc nếu chưa thiết kế đồng bộ identity và role. Hiện hệ thống dùng đăng nhập email/password và tích hợp Neon Auth.
 - **Observability:** tiếp tục dùng Render logs + GitHub Actions; bổ sung error tracking, uptime monitor, storage scan queue và cảnh báo quota/backup.
 
+## Kiến trúc và phương án triển khai
+
+- [Kiến trúc Cloudflare + Render + Neon](docs/architecture/target-architecture.md)
+- [Phương án Azure Front Door](docs/architecture/azure-reference-profile.md)
+- [Phân phối ứng dụng Windows 10/11](docs/architecture/windows-distribution.md)
+
+Đây là thiết kế triển khai theo từng giai đoạn; không phải xác nhận Cloudflare, Azure, Redis, Elasticsearch hay parser worker đã chạy production.
+
 ## Tính năng
 
 - Trang chủ responsive, danh mục, tìm kiếm, lọc, phân trang, trang chi tiết và SEO.

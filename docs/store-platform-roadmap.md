@@ -27,6 +27,13 @@
 
 ## Recommended target architecture: modular monolith first
 
+See the detailed architecture designs:
+- [Unified Cloudflare + Render + Neon target architecture](architecture/target-architecture.md)
+- [Azure Front Door alternative profile](architecture/azure-reference-profile.md)
+- [Windows 10/11 distribution plan](architecture/windows-distribution.md)
+
+These documents distinguish existing production services from proposed infrastructure.
+
 Keep PHP and Render as the current production runtime. Refactor the API into bounded domains instead of replacing the backend with Node.js immediately. Maintain `api.php` as a compatibility router while new module handlers are extracted.
 
 Suggested source layout:
