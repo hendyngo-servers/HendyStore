@@ -166,7 +166,7 @@ function hendystore_security_package_row(PDO $db, string $objectKey): ?array
     return $row ?: null;
 }
 
-function hendystore_security_package_downloadable(PDO $db, int $productId, string $packageUrl): bool
+function hendystore_security_package_downloadable(PDO $db, int $productId, string $packageUrl, bool $checkObject = true): bool
 {
     if (!hendystore_feature_safe_package_url($packageUrl)) return false;
     if (!str_starts_with($packageUrl, 'file:')) {
@@ -183,13 +183,13 @@ function hendystore_security_package_downloadable(PDO $db, int $productId, strin
         return ($package['moderation_status'] ?? 'pending') === 'approved'
             && ($package['scan_status'] ?? '') === 'clean'
             && preg_match('/^[a-f0-9]{64}$/', (string)($package['sha256'] ?? '')) === 1
-            && neon_storage_exists($objectKey);
+            && (!$checkObject || neon_storage_exists($objectKey));
     }
 
     // Preserve compatibility for legacy packages that predate the moderation tables.
     $managed = $db->prepare('SELECT 1 FROM app_release_security WHERE product_id=:id LIMIT 1');
     $managed->execute([':id' => $productId]);
-    return !$managed->fetchColumn() && neon_storage_exists($objectKey);
+    return !$managed->fetchColumn() && (!$checkObject || neon_storage_exists($objectKey));
 }
 
 function hendystore_security_save_scan(PDO $db, string $objectKey, array $scan, string $sha256 = '', int $size = 0): void
