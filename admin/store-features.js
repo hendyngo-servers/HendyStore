@@ -4,24 +4,30 @@ const $ = (s,root=document)=>root.querySelector(s);
 const apiUrl = new URL('../api.php',document.baseURI);
 let csrf = '', products = [], selected = null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-async function call(action,method='GET',body=null) {
+async function call(action,method='GET',body=null,retryCsrf=true) {
   const url = new URL(apiUrl); url.searchParams.set('action',action);
   const headers={Accept:'application/json'};
   if(method!=='GET'){headers['Content-Type']='application/json';if(csrf)headers['X-CSRF-Token']=csrf;}
   try{if(window.HendyNeon?.getToken){const token=await window.HendyNeon.getToken();if(token)headers.Authorization='Bearer '+token;}}catch(_){}
-  try{if(window.HendyNeon?.getToken){const token=await window.HendyNeon.getToken();if(token)headers.Authorization='Bearer '+token;}}catch(_){}
   const response=await fetch(url,{method,credentials:'same-origin',headers,body:body?JSON.stringify(body):undefined});
   const data=await response.json();
+  if(response.status===419&&method!=='GET'&&retryCsrf){
+    const refreshed=await call('me','GET',null,false);csrf=refreshed.data?.csrfToken||'';
+    return call(action,method,body,false);
+  }
   if(!response.ok||!data.ok)throw new Error(data.error||'Yêu cầu thất bại.');
+  if(data.data?.csrfToken)csrf=data.data.csrfToken;
   return data;
 }
-async function upload(kind,file) {
+async function upload(kind,file,retryCsrf=true) {
   const url=new URL(apiUrl);url.searchParams.set('action','admin_upload');
   const form=new FormData();form.append('kind',kind);form.append('file',file);
   const headers={};if(csrf)headers['X-CSRF-Token']=csrf;
   try{if(window.HendyNeon?.getToken){const token=await window.HendyNeon.getToken();if(token)headers.Authorization='Bearer '+token;}}catch(_){}
   const response=await fetch(url,{method:'POST',credentials:'same-origin',headers,body:form});
-  const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Tải tệp thất bại.');
+  const data=await response.json();
+  if(response.status===419&&retryCsrf){const refreshed=await call('me','GET',null,false);csrf=refreshed.data?.csrfToken||'';return upload(kind,file,false);}
+  if(!response.ok||!data.ok)throw new Error(data.error||'Tải tệp thất bại.');
   return data.data;
 }
 function status(id,message){const node=$('#'+id);if(node)node.textContent=message;}
