@@ -119,28 +119,31 @@ function require_csrf(): void {
 function database_url_to_pdo(string $url): array
 {
     $parts = parse_url($url);
-    if (!is_array($parts) || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['postgres', 'postgresql'], true)) {
-        throw new RuntimeException('DATABASE_URL must be a PostgreSQL URL.');
+    $scheme = strtolower((string)($parts['scheme'] ?? ''));
+    if (!is_array($parts) || !in_array($scheme, ['postgres', 'postgresql', 'mysql', 'mariadb'], true)) {
+        throw new RuntimeException('DATABASE_URL must use PostgreSQL or MySQL/MariaDB.');
     }
-    $host = (string) ($parts['host'] ?? '');
-    $database = rawurldecode(ltrim((string) ($parts['path'] ?? ''), '/'));
-    $username = rawurldecode((string) ($parts['user'] ?? ''));
-    $password = rawurldecode((string) ($parts['pass'] ?? ''));
+    $host = (string)($parts['host'] ?? '');
+    $database = rawurldecode(ltrim((string)($parts['path'] ?? ''), '/'));
+    $username = rawurldecode((string)($parts['user'] ?? ''));
+    $password = rawurldecode((string)($parts['pass'] ?? ''));
     if ($host === '' || $database === '' || $username === '') {
         throw new RuntimeException('DATABASE_URL is missing its host, database, or username.');
     }
-    $port = (int) ($parts['port'] ?? 5432);
+    $isMysql = in_array($scheme, ['mysql', 'mariadb'], true);
+    $port = (int)($parts['port'] ?? ($isMysql ? 3306 : 5432));
     if ($port < 1 || $port > 65535) {
         throw new RuntimeException('DATABASE_URL contains an invalid port.');
     }
     $query = [];
-    parse_str((string) ($parts['query'] ?? ''), $query);
-    // Force TLS and retain Neon channel binding when it is present in the pooled URL.
-    // Never log this DSN or its credentials.
-    $dsn = 'pgsql:host=' . $host . ';port=' . $port . ';dbname=' . $database . ';sslmode=require';
-    if (($query['channel_binding'] ?? '') === 'require') {
-        $dsn .= ';channel_binding=require';
+    parse_str((string)($parts['query'] ?? ''), $query);
+    // Credentials never enter logs. Require TLS on network PostgreSQL connections.
+    if ($isMysql) {
+        $dsn = 'mysql:host=' . $host . ';port=' . $port . ';dbname=' . $database . ';charset=utf8mb4';
+        return [$dsn, $username, $password];
     }
+    $dsn = 'pgsql:host=' . $host . ';port=' . $port . ';dbname=' . $database . ';sslmode=require';
+    if (($query['channel_binding'] ?? '') === 'require') $dsn .= ';channel_binding=require';
     return [$dsn, $username, $password];
 }
 
@@ -156,14 +159,14 @@ function store_db(): PDO
     $pass = env_value('DB_PASSWORD', '');
     $driver = 'sqlite';
 
-    if ($configured !== null && (str_starts_with($configured, 'postgres://') || str_starts_with($configured, 'postgresql://'))) {
+    if ($configured !== null && preg_match('#^(?:postgres|postgresql|mysql|mariadb)://#i', $configured)) {
         [$dsn, $user, $pass] = database_url_to_pdo($configured);
-        $driver = 'pgsql';
+        $driver = str_starts_with($dsn, 'mysql:') ? 'mysql' : 'pgsql';
     } elseif ($configured !== null) {
         $dsn = $configured;
         $driver = str_starts_with($dsn, 'pgsql:') ? 'pgsql' : (str_starts_with($dsn, 'mysql:') ? 'mysql' : 'sqlite');
     } elseif (env_value('APP_ENV', 'development') === 'production') {
-        throw new RuntimeException('DATABASE_URL is required in production. Configure the Neon pooled PostgreSQL connection string.');
+        throw new RuntimeException('DATABASE_URL is required in production. Configure the selected PostgreSQL or MySQL connection string.');
     } else {
         if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
             throw new RuntimeException('PDO SQLite is unavailable. Configure DATABASE_URL for PostgreSQL.');
@@ -408,8 +411,8 @@ final class NeonPostgresSessionHandler implements SessionHandlerInterface, Sessi
 function object_storage_provider(): string
 {
     $provider = strtolower(trim((string) env_value('OBJECT_STORAGE_PROVIDER', 'neon')));
-    if (!in_array($provider, ['neon', 'cloudfly'], true)) {
-        throw new RuntimeException('OBJECT_STORAGE_PROVIDER must be either neon or cloudfly.');
+    if (!in_array($provider, ['neon', 'cloudfly', 'r2', 's3'], true)) {
+        throw new RuntimeException('OBJECT_STORAGE_PROVIDER must be one of neon, cloudfly, r2 or s3.');
     }
     return $provider;
 }
@@ -421,64 +424,64 @@ function object_storage_provider(): string
  */
 function object_storage_connection_config(string $provider): array
 {
-    if ($provider === 'cloudfly') {
-        $endpoint = rtrim((string) env_value('OBJECT_STORAGE_ENDPOINT', 'https://s3.cloudfly.vn'), '/');
-        $region = trim((string) env_value('OBJECT_STORAGE_REGION', 'hn'));
-        $bucket = trim((string) env_value('OBJECT_STORAGE_BUCKET', ''));
-        $accessKey = trim((string) env_value('OBJECT_STORAGE_ACCESS_KEY_ID', ''));
-        $secretKey = (string) env_value('OBJECT_STORAGE_SECRET_ACCESS_KEY', '');
-        $sessionToken = (string) env_value('OBJECT_STORAGE_SESSION_TOKEN', '');
-        $parts = parse_url($endpoint);
-        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])
-            || trim((string)($parts['path'] ?? ''), '/') !== '' || isset($parts['user']) || isset($parts['pass'])
-            || isset($parts['query']) || isset($parts['fragment'])) {
-            throw new RuntimeException('OBJECT_STORAGE_ENDPOINT must be an HTTPS S3 endpoint.');
-        }
-        // CloudFly's bucket naming guidance: lowercase letters, digits and hyphens.
-        if ($bucket === '' || !preg_match('/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/', $bucket)) {
-            throw new RuntimeException('OBJECT_STORAGE_BUCKET is invalid for CloudFly.');
-        }
-        if ($accessKey === '' || $secretKey === '' || $region === '') {
-            throw new RuntimeException('CloudFly Object Storage credentials are not fully configured.');
-        }
-        return [
-            'provider' => 'cloudfly',
-            'endpoint' => $endpoint,
-            'region' => $region,
-            'bucket' => $bucket,
-            'access_key' => $accessKey,
-            'secret_key' => $secretKey,
-            'session_token' => $sessionToken,
-            'path_style' => env_bool('OBJECT_STORAGE_FORCE_PATH_STYLE', true),
-        ];
-    }
-
     if ($provider === 'neon') {
         $endpoint = rtrim((string) env_value('AWS_ENDPOINT_URL_S3', ''), '/');
         $region = trim((string) env_value('AWS_REGION', ''));
         $bucket = trim((string) env_value('NEON_STORAGE_BUCKET', ''));
         $accessKey = trim((string) env_value('AWS_ACCESS_KEY_ID', ''));
         $secretKey = (string) env_value('AWS_SECRET_ACCESS_KEY', '');
-        $parts = parse_url($endpoint);
-        if ($endpoint === '' || !is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])
-            || trim((string)($parts['path'] ?? ''), '/') !== '' || isset($parts['user']) || isset($parts['pass'])
-            || isset($parts['query']) || isset($parts['fragment']) || $region === '' || $bucket === ''
-            || $accessKey === '' || $secretKey === '' || !preg_match('/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/', $bucket)) {
-            throw new RuntimeException('Neon Object Storage credentials are not fully configured.');
+        $sessionToken = '';
+        $pathStyle = env_bool('NEON_STORAGE_FORCE_PATH_STYLE', true);
+        $signature = 'v4';
+    } else {
+        $endpoint = rtrim((string) env_value('OBJECT_STORAGE_ENDPOINT', ''), '/');
+        $region = trim((string) env_value('OBJECT_STORAGE_REGION', ''));
+        $bucket = trim((string) env_value('OBJECT_STORAGE_BUCKET', ''));
+        $accessKey = trim((string) env_value('OBJECT_STORAGE_ACCESS_KEY_ID', ''));
+        $secretKey = (string) env_value('OBJECT_STORAGE_SECRET_ACCESS_KEY', '');
+        $sessionToken = (string) env_value('OBJECT_STORAGE_SESSION_TOKEN', '');
+        $pathStyle = env_bool('OBJECT_STORAGE_FORCE_PATH_STYLE', true);
+        $signature = 'v4';
+
+        if ($provider === 'cloudfly') {
+            $endpoint = $endpoint !== '' ? $endpoint : 'https://s3.cloudfly.vn';
+            $region = $region !== '' ? $region : 'hn';
+        } elseif ($provider === 'r2') {
+            $accountId = trim((string) env_value('CLOUDFLARE_ACCOUNT_ID', ''));
+            $endpoint = $endpoint !== '' ? $endpoint : ($accountId !== '' ? 'https://' . $accountId . '.r2.cloudflarestorage.com' : '');
+            $region = $region !== '' ? $region : 'auto';
+        } elseif ($provider === 's3') {
+            $region = $region !== '' ? $region : 'us-east-1';
         }
-        return [
-            'provider' => 'neon',
-            'endpoint' => $endpoint,
-            'region' => $region,
-            'bucket' => $bucket,
-            'access_key' => $accessKey,
-            'secret_key' => $secretKey,
-            'session_token' => '',
-            'path_style' => env_bool('NEON_STORAGE_FORCE_PATH_STYLE', true),
-        ];
     }
 
-    throw new RuntimeException('Unsupported Object Storage provider.');
+    $parts = parse_url($endpoint);
+    if ($endpoint === '' || !is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host'])
+        || trim((string)($parts['path'] ?? ''), '/') !== '' || isset($parts['user']) || isset($parts['pass'])
+        || isset($parts['query']) || isset($parts['fragment'])) {
+        throw new RuntimeException('Object Storage endpoint must be an HTTPS origin without credentials, path, query or fragment.');
+    }
+    $bucketPattern = $provider === 'neon'
+        ? '/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/'
+        : '/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/';
+    if ($bucket === '' || !preg_match($bucketPattern, $bucket)) {
+        throw new RuntimeException('Object Storage bucket name is invalid for the selected provider.');
+    }
+    if ($accessKey === '' || $secretKey === '' || $region === '') {
+        throw new RuntimeException(ucfirst($provider) . ' Object Storage credentials are not fully configured.');
+    }
+
+    return [
+        'provider' => $provider,
+        'endpoint' => $endpoint,
+        'region' => $region,
+        'bucket' => $bucket,
+        'access_key' => $accessKey,
+        'secret_key' => $secretKey,
+        'session_token' => $sessionToken,
+        'path_style' => $pathStyle,
+        'signature_version' => $signature,
+    ];
 }
 
 function object_storage_configured(string $provider): bool
@@ -510,17 +513,15 @@ function object_storage_s3_client(string $provider): \Aws\S3\S3Client
         'use_path_style_endpoint' => $config['path_style'],
         'http' => ['connect_timeout' => 5, 'timeout' => 20],
     ];
-    if ($provider === 'cloudfly') {
-        // CloudFly's PHP SDK example uses region "hn" and Signature V4.
-        $clientOptions['signature_version'] = 'v4';
-    }
+    // CloudFly uses region `hn`; Cloudflare R2 uses `auto`; both use SigV4.
+    $clientOptions['signature_version'] = (string) $config['signature_version'];
     $clients[$provider] = new \Aws\S3\S3Client($clientOptions);
     return $clients[$provider];
 }
 
 function object_storage_legacy_neon_fallback_enabled(): bool
 {
-    return object_storage_provider() === 'cloudfly'
+    return object_storage_provider() !== 'neon'
         && env_bool('OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK', true)
         && object_storage_configured('neon');
 }

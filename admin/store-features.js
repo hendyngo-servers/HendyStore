@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const $ = (s,root=document)=>root.querySelector(s);
-const apiUrl = new URL('../api.php',document.baseURI);
+const apiUrl = new URL('/api.php',window.location.origin);
 let csrf = '', products = [], selected = null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 async function call(action,method='GET',body=null,retryCsrf=true) {

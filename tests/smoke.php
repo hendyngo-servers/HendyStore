@@ -6,6 +6,16 @@ putenv('APP_ENV=development'); putenv('STORAGE_PATH='.$tempRoot.'/storage'); put
 putenv('ADMIN_EMAIL=admin@example.test'); putenv('ADMIN_PASSWORD=Hendy-Store12!');
 require_once dirname(__DIR__).'/config/bootstrap.php';
 $db=store_db();
+[$mysqlDsn, $mysqlUser, $mysqlPassword] = database_url_to_pdo('mysql://hendy_user:secret%40value@mysql.example.test:3306/hendy_store');
+if ($mysqlDsn !== 'mysql:host=mysql.example.test;port=3306;dbname=hendy_store;charset=utf8mb4'
+    || $mysqlUser !== 'hendy_user' || $mysqlPassword !== 'secret@value') {
+    throw new RuntimeException('MySQL DATABASE_URL parsing must preserve URL-encoded credentials.');
+}
+[$postgresDsn, $postgresUser, $postgresPassword] = database_url_to_pdo('postgresql://neondb_owner:encoded%40password@ep-test-pooler.example.test:5432/Hendy_Store?sslmode=require&channel_binding=require');
+if (!str_contains($postgresDsn, 'sslmode=require') || !str_contains($postgresDsn, 'channel_binding=require')
+    || $postgresUser !== 'neondb_owner' || $postgresPassword !== 'encoded@password') {
+    throw new RuntimeException('PostgreSQL DATABASE_URL parsing must enforce TLS and retain channel binding.');
+}
 if (!is_subclass_of(NeonPostgresSessionHandler::class, SessionUpdateTimestampHandlerInterface::class)) {
     throw new RuntimeException('Neon session handler must implement PHP strict session ID validation and timestamp renewal.');
 }

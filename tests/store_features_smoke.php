@@ -54,7 +54,7 @@ $storageTestKeys = [
     'OBJECT_STORAGE_PROVIDER', 'OBJECT_STORAGE_ENDPOINT', 'OBJECT_STORAGE_REGION',
     'OBJECT_STORAGE_BUCKET', 'OBJECT_STORAGE_ACCESS_KEY_ID', 'OBJECT_STORAGE_SECRET_ACCESS_KEY',
     'OBJECT_STORAGE_SESSION_TOKEN', 'OBJECT_STORAGE_FORCE_PATH_STYLE',
-    'OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK', 'AWS_ACCESS_KEY_ID',
+    'OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK', 'CLOUDFLARE_ACCOUNT_ID', 'AWS_ACCESS_KEY_ID',
     'AWS_SECRET_ACCESS_KEY', 'AWS_ENDPOINT_URL_S3', 'AWS_REGION', 'NEON_STORAGE_BUCKET',
     'NEON_STORAGE_FORCE_PATH_STYLE',
 ];
@@ -95,6 +95,35 @@ try {
 } catch (RuntimeException $expected) {
     if (!str_contains($expected->getMessage(), 'OBJECT_STORAGE_BUCKET')) throw $expected;
 }
+// Cloudflare R2 uses the account endpoint, region=auto and SigV4.
+$_ENV['OBJECT_STORAGE_PROVIDER'] = 'r2';
+$_ENV['CLOUDFLARE_ACCOUNT_ID'] = '0123456789abcdef0123456789abcdef';
+$_ENV['OBJECT_STORAGE_ENDPOINT'] = '';
+$_ENV['OBJECT_STORAGE_REGION'] = 'auto';
+$_ENV['OBJECT_STORAGE_BUCKET'] = 'hendy-r2-test';
+$_ENV['OBJECT_STORAGE_ACCESS_KEY_ID'] = 'r2-test-key';
+$_ENV['OBJECT_STORAGE_SECRET_ACCESS_KEY'] = 'r2-test-secret';
+$r2Config = object_storage_connection_config('r2');
+if ($r2Config['endpoint'] !== 'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com'
+    || $r2Config['region'] !== 'auto' || $r2Config['bucket'] !== 'hendy-r2-test'
+    || $r2Config['path_style'] !== true || $r2Config['signature_version'] !== 'v4') {
+    throw new RuntimeException('Cloudflare R2 connection configuration is invalid.');
+}
+$r2Client = neon_s3_client();
+if (!($r2Client instanceof \Aws\S3\S3Client)) {
+    throw new RuntimeException('Cloudflare R2 must use the AWS-compatible S3 SDK client.');
+}
+
+// Generic S3 endpoint support uses the same private bucket adapter.
+$_ENV['OBJECT_STORAGE_PROVIDER'] = 's3';
+$_ENV['OBJECT_STORAGE_ENDPOINT'] = 'https://s3.example.test';
+$_ENV['OBJECT_STORAGE_REGION'] = 'us-west-2';
+$_ENV['OBJECT_STORAGE_BUCKET'] = 'hendy-s3-test';
+$s3Config = object_storage_connection_config('s3');
+if ($s3Config['endpoint'] !== 'https://s3.example.test' || $s3Config['region'] !== 'us-west-2') {
+    throw new RuntimeException('Generic S3 provider configuration is invalid.');
+}
+
 foreach ($storageTestOriginal as $key => $value) {
     if ($value === null) unset($_ENV[$key]); else $_ENV[$key] = $value;
 }

@@ -66,6 +66,10 @@ services:
         value: "209715200"
       - key: OBJECT_STORAGE_PROVIDER
         sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: WORKER_DATABASE_PROVIDER
+        value: postgres
       - key: OBJECT_STORAGE_ENDPOINT
         value: https://s3.cloudfly.vn
       - key: OBJECT_STORAGE_REGION

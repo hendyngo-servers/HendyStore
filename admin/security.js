@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const $ = (selector) => document.querySelector(selector);
-const api = new URL('../api.php', document.baseURI);
+const api = new URL('/api.php', window.location.origin);
 const state = { csrf: '' };
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function notify(message) {

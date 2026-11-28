@@ -4,7 +4,7 @@
   let csrf = '';
   let products = [];
   let editingId = null;
-  const apiUrl = new URL('../api.php', window.location.href);
+  const apiUrl = new URL('/api.php', window.location.origin);
 
   async function call(action, method = 'GET', body = null, retryCsrf = true) {
     const url = new URL(apiUrl);
