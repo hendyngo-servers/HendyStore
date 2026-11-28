@@ -27,7 +27,7 @@ export interface ProductResponse {
 
 function apiOrigin(): string {
   const origin = process.env.HENDY_API_ORIGIN || "https://hendystore.onrender.com";
-  return origin.replace(/\/$/, "");
+  return origin.endsWith("/") ? origin.slice(0, -1) : origin;
 }
 
 export async function getProducts(params: {
@@ -96,7 +96,7 @@ export function publicAsset(value?: string): string {
   if (/^https:\/\//i.test(value)) return value;
   if (value.startsWith("media:")) return "/api.php?action=media&file=" + encodeURIComponent(value.slice(6));
   if (value.startsWith("/")) return value;
-  return "/" + value.replace(/^\.\//, "");
+  return "/" + (value.startsWith("./") ? value.slice(2) : value);
 }
 
 export function productSummary(product: StoreProduct): string {
