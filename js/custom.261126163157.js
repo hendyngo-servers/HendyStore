@@ -195,12 +195,23 @@ function bindEvents() {
     const body=Object.fromEntries(new FormData(form).entries()); $('#authMessage').textContent='Đang xử lý…';
     try {
       if (state.neonAuthEnabled && window.HendyNeon) {
-        if (mode === 'register') await window.HendyNeon.signUp(body.name, body.email, body.password);
-        else await window.HendyNeon.signIn(body.email, body.password);
+        if (mode === 'register') {
+          await window.HendyNeon.signUp(body.name, body.email, body.password);
+          const session = await window.HendyNeon.getSession();
+          if (!session?.user) {
+            $('#authMessage').textContent = 'Tài khoản đã được tạo. Hãy kiểm tra email và xác minh địa chỉ trước khi đăng nhập.';
+            form.reset();
+            return;
+          }
+        } else {
+          await window.HendyNeon.signIn(body.email, body.password);
+        }
         const refreshed = await call('bootstrap');
         state.user = refreshed.data.user || null;
         state.csrf = refreshed.data.csrfToken || state.csrf;
-        if (!state.user) throw new Error('Neon Auth đã xác thực nhưng API chưa nhận được hồ sơ người dùng. Kiểm tra JWKS và domain cấu hình.');
+        if (!state.user) {
+          throw new Error('Đăng nhập Neon Auth thành công nhưng API chưa xác thực được JWT. Kiểm tra NEON_AUTH_JWKS_URL, NEON_AUTH_BASE_URL và issuer của Neon Auth.');
+        }
       } else {
         const result=await call(mode,'POST',body);
         state.user=result.data.user;
