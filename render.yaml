@@ -4,7 +4,7 @@ services:
     runtime: docker
     plan: free
     autoDeploy: true
-    healthCheckPath: /api.php?action=health
+    healthCheckPath: /healthz
     envVars:
       - key: PORT
         value: "10000"
@@ -13,7 +13,9 @@ services:
       - key: STORE_NAME
         value: Hendy Store
       - key: APP_URL
-        sync: false
+        value: auto
+      - key: APP_AUTO_DETECT_DOMAINS
+        value: "true"
       - key: APP_KEY
         generateValue: true
       - key: ADMIN_EMAIL

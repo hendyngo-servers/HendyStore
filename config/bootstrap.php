@@ -31,27 +31,173 @@ function env_bool(string $key, bool $default = false): bool {
     return $value === null ? $default : filter_var($value, FILTER_VALIDATE_BOOLEAN);
 }
 function request_is_https(): bool {
-    return (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
-        || (env_bool('TRUST_PROXY_HEADERS') && strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+    if (env_bool('TRUST_PROXY_HEADERS')) {
+        $forwardedProto = strtolower(trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''), 2)[0]));
+        if (in_array($forwardedProto, ['http', 'https'], true)) {
+            return $forwardedProto === 'https';
+        }
+
+        $cloudflareVisitor = json_decode((string)($_SERVER['HTTP_CF_VISITOR'] ?? ''), true);
+        if (is_array($cloudflareVisitor) && strtolower((string)($cloudflareVisitor['scheme'] ?? '')) === 'https') {
+            return true;
+        }
+    }
+
+    return !empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off';
 }
+
+/**
+ * Normalize an incoming Host/X-Forwarded-Host value before using it in an
+ * absolute URL. Reject URL syntax, credentials, paths, malformed DNS labels
+ * and invalid ports instead of reflecting arbitrary request input.
+ */
+function normalize_request_host(string $candidate): ?string {
+    $candidate = trim(explode(',', $candidate, 2)[0]);
+    if ($candidate === '' || strlen($candidate) > 300
+        || preg_match('/[\x00-\x20\/\\\\?#@]/', $candidate)) {
+        return null;
+    }
+
+    $parts = parse_url('https://' . $candidate);
+    if (!is_array($parts) || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])
+        || isset($parts['path']) || isset($parts['query']) || isset($parts['fragment'])) {
+        return null;
+    }
+
+    $host = strtolower(rtrim((string)$parts['host'], '.'));
+    $bareHost = trim($host, '[]');
+    if ($bareHost === '') {
+        return null;
+    }
+
+    if (filter_var($bareHost, FILTER_VALIDATE_IP) === false) {
+        $label = '(?:[a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])';
+        if (strlen($bareHost) > 253 || preg_match('/^' . $label . '(?:\.' . $label . ')*$/iD', $bareHost) !== 1) {
+            return null;
+        }
+    }
+
+    $port = $parts['port'] ?? null;
+    if ($port !== null && ($port < 1 || $port > 65535)) {
+        return null;
+    }
+
+    $normalized = str_contains($bareHost, ':') ? '[' . $bareHost . ']' : $bareHost;
+    if ($port !== null && !in_array((int)$port, [80, 443], true)) {
+        $normalized .= ':' . $port;
+    }
+
+    return $normalized;
+}
+
+function request_hostname(string $host): string {
+    $parts = parse_url('https://' . $host);
+    return strtolower(trim((string)($parts['host'] ?? ''), '[]'));
+}
+
+/**
+ * Optional APP_ALLOWED_HOSTS accepts comma-separated exact hosts and
+ * wildcard entries such as *.example.com. An empty value enables dynamic
+ * host detection for validated hosts when the trusted proxy mode is enabled.
+ */
+function app_request_host_is_allowed(string $host): bool {
+    $configured = trim((string)env_value('APP_ALLOWED_HOSTS', ''));
+    if ($configured === '') {
+        return true;
+    }
+
+    $hostname = request_hostname($host);
+    foreach (explode(',', $configured) as $entry) {
+        $entry = strtolower(trim($entry));
+        if ($entry === '') {
+            continue;
+        }
+
+        if (str_starts_with($entry, '*.')) {
+            $suffix = request_hostname(substr($entry, 2));
+            if ($suffix !== '' && $hostname !== $suffix && str_ends_with($hostname, '.' . $suffix)) {
+                return true;
+            }
+            continue;
+        }
+
+        if (str_starts_with($entry, '.')) {
+            $suffix = request_hostname(substr($entry, 1));
+            if ($suffix !== '' && ($hostname === $suffix || str_ends_with($hostname, '.' . $suffix))) {
+                return true;
+            }
+            continue;
+        }
+
+        $normalizedEntry = normalize_request_host($entry);
+        if ($normalizedEntry !== null && request_hostname($normalizedEntry) === $hostname) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function validate_public_base_url(string $url, bool $production, string $setting): string {
+    $parts = parse_url($url);
+    $scheme = strtolower((string)(is_array($parts) ? ($parts['scheme'] ?? '') : ''));
+    $host = (string)(is_array($parts) ? ($parts['host'] ?? '') : '');
+    $port = is_array($parts) && isset($parts['port']) ? ':' . (string)$parts['port'] : '';
+    $normalizedHost = $host !== '' ? normalize_request_host($host . $port) : null;
+    $path = (string)(is_array($parts) ? ($parts['path'] ?? '') : '');
+
+    if ($normalizedHost === null || ($scheme !== 'https' && !(!$production && $scheme === 'http'))
+        || !is_array($parts) || isset($parts['user']) || isset($parts['pass'])
+        || isset($parts['query']) || isset($parts['fragment']) || str_contains($path, '..')) {
+        throw new RuntimeException($setting . ' must be a valid public HTTPS base URL without credentials, query, fragment or traversal path.');
+    }
+
+    return rtrim($url, '/');
+}
+
 function app_base_url(): string {
-    $url = trim((string)env_value('APP_URL', ''));
+    $configuredUrl = trim((string)env_value('APP_URL', ''));
     $production = env_value('APP_ENV', 'development') === 'production';
-    if ($url === '') {
-        if ($production) throw new RuntimeException('APP_URL must be set to the public HTTPS domain.');
-        $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
-        if (!preg_match('/^[a-zA-Z0-9.:\[\]-]+$/', $host)) $host = 'localhost';
+    $autoMode = $configuredUrl === '' || strtolower($configuredUrl) === 'auto';
+
+    // An explicit URL remains the canonical override for single-domain installs.
+    if (!$autoMode) {
+        return validate_public_base_url($configuredUrl, $production, 'APP_URL');
+    }
+
+    // Render/Cloudflare proxy deployments can serve several domains from one
+    // origin. In auto mode, derive the origin from the trusted proxy host for
+    // each request so canonical links and redirects follow the requested domain.
+    if (env_bool('APP_AUTO_DETECT_DOMAINS', $production) && env_bool('TRUST_PROXY_HEADERS')) {
+        $candidates = [
+            (string)($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''),
+            (string)($_SERVER['HTTP_HOST'] ?? ''),
+        ];
+
+        foreach ($candidates as $candidate) {
+            $host = normalize_request_host($candidate);
+            if ($host !== null && app_request_host_is_allowed($host)) {
+                $scheme = ($production || request_is_https()) ? 'https' : 'http';
+                return $scheme . '://' . $host;
+            }
+        }
+    }
+
+    // Render supplies this automatically. It is also a safe fallback for CLI
+    // tasks and requests that do not carry a usable trusted proxy hostname.
+    $renderUrl = trim((string)env_value('RENDER_EXTERNAL_URL', ''));
+    if ($renderUrl !== '') {
+        return validate_public_base_url($renderUrl, $production, 'RENDER_EXTERNAL_URL');
+    }
+
+    if (!$production) {
+        $host = normalize_request_host((string)($_SERVER['HTTP_HOST'] ?? 'localhost')) ?? 'localhost';
         return (request_is_https() ? 'https://' : 'http://') . $host;
     }
-    $parts = parse_url($url);
-    $scheme = strtolower((string)($parts['scheme'] ?? ''));
-    $host = (string)($parts['host'] ?? '');
-    if ($host === '' || ($scheme !== 'https' && !(!$production && $scheme === 'http'))
-        || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])
-        || str_contains((string)($parts['path'] ?? ''), '..')) {
-        throw new RuntimeException('APP_URL must be a valid HTTPS base URL without credentials, query, fragment or traversal path.');
-    }
-    return rtrim($url, '/');
+
+    throw new RuntimeException(
+        'Cannot determine the public HTTPS origin. Set APP_URL, or enable APP_AUTO_DETECT_DOMAINS with TRUST_PROXY_HEADERS behind a trusted proxy; RENDER_EXTERNAL_URL is used automatically on Render.'
+    );
 }
 function enforce_https_request(): void {
     if (PHP_SAPI === 'cli' || env_value('APP_ENV', 'development') !== 'production' || !env_bool('FORCE_HTTPS', true) || request_is_https()) return;

@@ -5,6 +5,69 @@ if (!mkdir($tempRoot,0700,true)) throw new RuntimeException('Unable to create te
 putenv('APP_ENV=development'); putenv('STORAGE_PATH='.$tempRoot.'/storage'); putenv('SQLITE_PATH='.$tempRoot.'/store.sqlite');
 putenv('ADMIN_EMAIL=admin@example.test'); putenv('ADMIN_PASSWORD=Hendy-Store12!');
 require_once dirname(__DIR__).'/config/bootstrap.php';
+
+// Domain auto-detection: explicit APP_URL overrides, while auto mode follows
+// a validated host supplied by the trusted reverse proxy.
+$domainEnvKeys = ['APP_ENV','APP_URL','APP_AUTO_DETECT_DOMAINS','APP_ALLOWED_HOSTS','TRUST_PROXY_HEADERS','RENDER_EXTERNAL_URL'];
+$domainEnvBefore = [];
+foreach ($domainEnvKeys as $key) {
+    $domainEnvBefore[$key] = [array_key_exists($key, $_ENV), $_ENV[$key] ?? null, getenv($key)];
+}
+$serverBefore = $_SERVER;
+$testDomainEnv = [
+    'APP_ENV' => 'production',
+    'APP_URL' => 'auto',
+    'APP_AUTO_DETECT_DOMAINS' => 'true',
+    'APP_ALLOWED_HOSTS' => '',
+    'TRUST_PROXY_HEADERS' => 'true',
+    'RENDER_EXTERNAL_URL' => 'https://hendy-store.onrender.com',
+];
+foreach ($testDomainEnv as $key => $value) {
+    $_ENV[$key] = $value;
+    putenv($key . '=' . $value);
+}
+$_SERVER['HTTP_X_FORWARDED_HOST'] = 'store.example.test';
+$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+$_SERVER['HTTP_HOST'] = 'hendy-store.onrender.com';
+if (app_base_url() !== 'https://store.example.test' || !request_is_https()) {
+    throw new RuntimeException('Trusted proxy domain auto-detection failed.');
+}
+
+$_ENV['APP_ALLOWED_HOSTS'] = '*.hendystore.test';
+putenv('APP_ALLOWED_HOSTS=*.hendystore.test');
+$_SERVER['HTTP_X_FORWARDED_HOST'] = 'cdn.hendystore.test';
+if (app_base_url() !== 'https://cdn.hendystore.test') {
+    throw new RuntimeException('Wildcard APP_ALLOWED_HOSTS entry was not accepted.');
+}
+
+$_SERVER['HTTP_X_FORWARDED_HOST'] = 'untrusted.example.test';
+if (app_base_url() !== 'https://hendy-store.onrender.com') {
+    throw new RuntimeException('A host outside APP_ALLOWED_HOSTS must use the trusted Render fallback.');
+}
+
+$_ENV['APP_ALLOWED_HOSTS'] = '';
+putenv('APP_ALLOWED_HOSTS=');
+$_SERVER['HTTP_X_FORWARDED_HOST'] = 'bad host/path';
+if (app_base_url() !== 'https://hendy-store.onrender.com') {
+    throw new RuntimeException('Malformed forwarded host must be rejected.');
+}
+
+$_ENV['APP_URL'] = 'https://canonical.example.test';
+putenv('APP_URL=https://canonical.example.test');
+$_SERVER['HTTP_X_FORWARDED_HOST'] = 'another.example.test';
+if (app_base_url() !== 'https://canonical.example.test') {
+    throw new RuntimeException('An explicit APP_URL must remain the canonical override.');
+}
+
+foreach ($domainEnvBefore as $key => [$wasSet, $oldValue, $processValue]) {
+    if ($wasSet) $_ENV[$key] = $oldValue;
+    else unset($_ENV[$key]);
+    if ($processValue === false) putenv($key);
+    else putenv($key . '=' . $processValue);
+}
+$_SERVER = $serverBefore;
+
+$db=store_db();
 $db=store_db();
 [$mysqlDsn, $mysqlUser, $mysqlPassword] = database_url_to_pdo('mysql://hendy_user:secret%40value@mysql.example.test:3306/hendy_store');
 if ($mysqlDsn !== 'mysql:host=mysql.example.test;port=3306;dbname=hendy_store;charset=utf8mb4'
