@@ -757,7 +757,7 @@ function rate_limit_or_fail(PDO $db,string $scope,int $maxHits,int $windowSecond
     if ($hits>$maxHits) { header('Retry-After: '.$windowSeconds); json_response(['ok'=>false,'error'=>'Bạn thao tác quá nhanh. Vui lòng thử lại sau.'],429); }
 }
 function valid_media_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\.(?:jpg|jpeg|png|webp)$/i',$token); }
-function valid_package_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\\.(?:apk|apks|xapk|zip|7z|rar|exe|msi|dmg|pkg|deb|rpm|tar|gz|pdf|appx|msix|appimage)$/i',$token); }
+function valid_package_token(string $token): bool { return (bool)preg_match('/^[a-f0-9]{32}\\.(?:apk|apks|xapk|zip|7z|rar|exe|msi|dmg|pkg|deb|rpm|tar|gz|pdf|appx|msix|appimage|ipa)$/i',$token); }
 function mb_substr_safe(string $value,int $max): string { return function_exists('mb_substr')?mb_substr($value,0,$max,'UTF-8'):substr($value,0,$max); }
 function validate_asset_reference(string $value): string {
     $value=trim($value); if ($value==='') return 'images/dummy.png';
