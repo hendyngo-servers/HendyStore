@@ -70,7 +70,7 @@ $schema=$product?[
 </div>
 <div class="detail-actions">
 <?php if($downloadUrl!=='' && $product['price_type']!=='Paid'): ?>
-<a class="button button-primary" href="<?= $escape($downloadUrl) ?>" rel="nofollow">Tải xuống <span>↓</span></a>
+<a class="button button-primary" href="#storeEcosystem">Chọn bộ cài phù hợp <span>↓</span></a>
 <?php else: ?><button class="button button-soft" type="button" disabled>Chưa có liên kết tải</button><?php endif; ?>
 <small>Kiểm tra nguồn phát hành và tệp trước khi cài đặt.</small>
 </div>
@@ -90,7 +90,7 @@ $schema=$product?[
 <div class="store-ecosystem" id="storeEcosystem" data-slug="<?= $escape($slug) ?>">
 <section class="store-feature-card">
   <h2>Tải đúng phiên bản cho thiết bị</h2>
-  <div class="store-build-picker"><label class="store-device-label" for="storePlatform">Thiết bị / hệ điều hành</label><select id="storePlatform" aria-label="Chọn hệ điều hành"></select><a class="button button-primary" id="storeDownload" href="<?= $escape($downloadUrl) ?>" rel="nofollow">Tải xuống ↓</a></div>
+  <div class="store-build-picker"><label class="store-device-label" for="storePlatform">Thiết bị / hệ điều hành</label><select id="storePlatform" aria-label="Chọn hệ điều hành"></select><a class="button button-primary" id="storeDownload" href="#" rel="nofollow">Đang kiểm tra bộ cài…</a></div>
   <p class="store-muted" id="storeBuildMessage">Đang nhận diện thiết bị và kiểm tra bộ cài…</p>
 </section>
 <section class="store-feature-card"><h2>Ảnh chụp màn hình</h2><div id="storeScreenshots"><p class="store-muted">Đang tải ảnh…</p></div></section>
