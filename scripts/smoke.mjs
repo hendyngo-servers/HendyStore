@@ -27,6 +27,29 @@ assert.ok(homeSource.includes("accountMenu"), "Signed-in users need an account m
 assert.ok(!homeSource.includes("accountAdminLink"), "Admin console must not be exposed in the public account menu");
 assert.ok(!homeSource.includes('href="tech-stack/"'), "Technology stack links must be hidden from the public storefront");
 
+const bootstrapStorageSource = await readFile("config/bootstrap.php", "utf8");
+for (const token of [
+  "OBJECT_STORAGE_PROVIDER",
+  "OBJECT_STORAGE_ENDPOINT",
+  "OBJECT_STORAGE_REGION",
+  "s3.cloudfly.vn",
+  "OBJECT_STORAGE_LEGACY_NEON_READ_FALLBACK",
+  "object_storage_s3_client",
+]) {
+  assert.ok(bootstrapStorageSource.includes(token), "Missing S3-compatible storage support: " + token);
+}
+for (const [path, token] of [
+  ["js/custom.261126163157.js", "response.status===419"],
+  ["admin/security.js", "response.status === 419"],
+  ["developer/console.js", "response.status === 419"],
+  ["admin/admin.js", "response.status === 419"],
+  ["admin/store-features.js", "response.status===419"],
+  ["library/library.js", "response.status === 419"],
+]) {
+  const source = await readFile(path, "utf8");
+  assert.ok(source.includes(token), "Missing automatic CSRF recovery in " + path);
+}
+
 const securitySource = await readFile("features/security.php", "utf8");
 for (const token of [
   "app_developer_profiles",
