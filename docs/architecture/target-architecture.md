@@ -91,21 +91,22 @@ Quy tắc chuyển:
 
 ## Tự động hóa cấu hình
 
-GitHub Actions secrets:
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CF_OBJECT_STORAGE_ACCESS_KEY_ID` và `CF_OBJECT_STORAGE_SECRET_ACCESS_KEY` khi Worker cần S3 API.
-- `CF_PLATFORM_HEALTH_TOKEN` nếu bật internal health control.
+### GitHub Actions secret
 
-GitHub Actions variables:
-- `CF_CREATE_R2` / `CF_R2_BUCKET_NAME` sau khi bucket được bảo vệ private.
-- `CF_CREATE_KV` / `CF_KV_NAMESPACE_NAME`.
-- `CF_CREATE_D1` / `CF_D1_DATABASE_NAME`.
-- `CF_DATABASE_PROVIDER=origin`.
-- `CF_OBJECT_STORAGE_PROVIDER=r2` sau khi binding đã được cấu hình.
-- `CF_R2_PRIVATE_ACCESS_CONFIRMED=true` chỉ sau khi xác minh public access đã tắt.
+- `CLOUDFLARE_API_TOKEN`: Account API Token scoped to HendyStore deployment. Minimum scopes used by the workflow: Workers Scripts Edit (existing API Worker), Workers KV Storage Edit, R2 Storage Read, D1 Edit, Pages Edit and Account Settings Read.
 
-Workflow `Deploy HendyStore platform targets` chỉ được kích hoạt thủ công. Workflow không xóa resource, không migrate dữ liệu Neon và không ghi đè secret đang tồn tại.
+The Account ID is public and stored in Wrangler configuration. Do not store it as a secret. The Render-only R2 S3 access key remains in Render Environment and is not copied to GitHub or Worker vars.
+
+### Resource names and safety gates
+
+- Existing private R2 bucket: `hendy-store`, EU jurisdiction. Workflow binds it and refuses public buckets unless the private-access confirmation is set in the workflow.
+- KV namespace: `hendystore-catalog-cache`. Create if missing, otherwise reuse by name.
+- D1 database: `hendystore-edge-db`. Create if missing, otherwise reuse by name. It remains empty/edge-local and is not populated from Neon.
+- Worker database provider: `origin`; PHP/Neon business APIs remain on Render. Hyperdrive and MySQL adapters are not used.
+- Worker storage provider: `r2`.
+- Next SSR Worker creation is gated by GitHub Actions variable `CF_ENABLE_NEXT_WORKER=true`. Cloudflare requires Workers Admin to create a new Worker; the current token only has Workers Scripts Edit for the existing `hendy-platform-api`. Add Workers Admin to the token before enabling that variable.
+
+The API Worker and Pages targets use existing account resources and the current Pages Write / Workers Scripts Edit permissions. Pages uses project `hendystore-pages`. All deployments are manual through `.github/workflows/deploy-platform.yml`; no normal push triggers Cloudflare deployment. The workflow does not delete any resource or migrate Neon data.
 
 ## Rollout gates
 
