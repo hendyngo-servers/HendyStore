@@ -44,6 +44,9 @@ jobs:
           CF_CREATE_R2: ${{ vars.CF_CREATE_R2 }}
           CF_R2_BUCKET_NAME: ${{ vars.CF_R2_BUCKET_NAME }}
           CF_R2_LOCATION: ${{ vars.CF_R2_LOCATION }}
+          CF_CREATE_KV: ${{ vars.CF_CREATE_KV }}
+          CF_KV_NAMESPACE_NAME: ${{ vars.CF_KV_NAMESPACE_NAME }}
+          CF_KV_NAMESPACE_ID: ${{ vars.CF_KV_NAMESPACE_ID }}
           CF_CREATE_D1: ${{ vars.CF_CREATE_D1 }}
           CF_D1_DATABASE_NAME: ${{ vars.CF_D1_DATABASE_NAME }}
           CF_D1_LOCATION: ${{ vars.CF_D1_LOCATION }}
