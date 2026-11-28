@@ -34,6 +34,27 @@ async function copy(text) {
   catch { const area=document.createElement('textarea');area.value=text;document.body.append(area);area.select();document.execCommand('copy');area.remove(); }
   const toast=$('#toast');if(toast){toast.textContent='Đã sao chép cấu hình.';toast.classList.add('show');window.setTimeout(()=>toast.classList.remove('show'),2500);}
 }
+async function authorizeInfrastructurePage() {
+  const workspace = $('#infraWorkspace');
+  const denied = $('#infraDenied');
+  try {
+    const response = await fetch(new URL('/api.php?action=me', window.location.origin), {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' }
+    });
+    const result = await response.json();
+    const user = result?.data?.user;
+    if (response.ok && result.ok && user?.role === 'admin') {
+      if (workspace) workspace.hidden = false;
+      return;
+    }
+  } catch (_) {}
+  if (denied) denied.hidden = false;
+}
+
+document.addEventListener('DOMContentLoaded', authorizeInfrastructurePage);
+
 document.addEventListener('click',(event)=>{
   const button=event.target.closest('[data-copy]');
   if(button){show(snippets[button.dataset.copy]||snippets.cloudfly);}
