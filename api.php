@@ -149,7 +149,7 @@ function admin_upload(PDO $db): never
             VALUES(:key,:user,:name,:size,:sha,'pending',:created,:updated)
             ON CONFLICT(object_key) DO UPDATE SET uploader_id=EXCLUDED.uploader_id,original_name=EXCLUDED.original_name,file_size_bytes=EXCLUDED.file_size_bytes,sha256=EXCLUDED.sha256,scan_status='pending',updated_at=EXCLUDED.updated_at");
         $record->execute([':key' => $objectKey, ':user' => (int)$admin['id'], ':name' => mb_substr_safe($originalName,255), ':size' => $size, ':sha' => $sha256, ':created' => $now, ':updated' => $now]);
-        $scan = hendystore_security_scan_file($tmp, $sha256, $size);
+        $scan = hendystore_security_scan_object($db, $objectKey, $sha256, $size);
         hendystore_security_save_scan($db, $objectKey, $scan, $sha256, $size);
         json_response(['ok' => true, 'data' => ['path' => 'file:' . $token, 'size' => $size, 'sha256' => $sha256, 'scan' => $scan['status'] ?? 'error']]);
     }
