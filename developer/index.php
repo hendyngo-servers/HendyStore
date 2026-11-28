@@ -94,7 +94,7 @@ header('Cache-Control: no-store, private');
 <label class="dev-field wide">Mô tả chi tiết<textarea name="description" maxlength="20000" required></textarea></label>
 <label class="dev-field">Nền tảng<input name="platform" value="Windows, Android, macOS, Linux, Web"></label>
 <label class="dev-field">Kênh phát hành<select name="release_track"><option value="alpha">Alpha — nội bộ</option><option value="beta">Beta — thử nghiệm</option><option value="production" selected>Production — chính thức</option></select></label>
-<label class="dev-field">Hệ điều hành mục tiêu<select name="release_platform"><option value="windows">Windows</option><option value="macos">macOS</option><option value="android">Android</option><option value="linux">Linux</option><option value="web">Web</option><option value="universal">Đa nền tảng</option></select></label>
+<label class="dev-field">Hệ điều hành mục tiêu<select name="release_platform"><option value="windows">Windows</option><option value="macos">macOS</option><option value="android">Android</option><option value="ios">iOS (IPA)</option><option value="linux">Linux</option><option value="web">Web</option><option value="universal">Đa nền tảng</option></select></label>
 <label class="dev-field">Video giới thiệu (URL HTTPS)<input name="video_url" type="url" placeholder="https://..."></label>
 <label class="dev-field wide">Nhật ký thay đổi<textarea name="release_notes" placeholder="Các thay đổi trong phiên bản này"></textarea></label>
 <label class="dev-field wide">Ảnh chụp màn hình (mỗi URL HTTPS một dòng, tối đa 12)<textarea name="screenshots_urls" placeholder="https://cdn.example.com/screenshot-1.png&#10;https://cdn.example.com/screenshot-2.png"></textarea></label>
