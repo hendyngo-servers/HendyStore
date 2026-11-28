@@ -34,6 +34,7 @@ function hendystore_security_schema(PDO $db): void
         file_size_bytes BIGINT NOT NULL DEFAULT 0,
         sha256 CHAR(64) NOT NULL DEFAULT '',
         scan_status VARCHAR(32) NOT NULL DEFAULT 'awaiting_upload',
+        moderation_status VARCHAR(24) NOT NULL DEFAULT 'pending',
         scan_provider VARCHAR(60) NOT NULL DEFAULT '',
         analysis_id TEXT NOT NULL DEFAULT '',
         scan_summary TEXT NOT NULL DEFAULT '',
@@ -105,6 +106,18 @@ function hendystore_security_schema(PDO $db): void
     } catch (Throwable $error) {
         // Existing SQLite/MySQL installations already have this additive column.
     }
+    try {
+        if ($driver === 'pgsql') {
+            $db->exec("ALTER TABLE app_security_packages ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(24) NOT NULL DEFAULT 'pending'");
+        } else {
+            $db->exec("ALTER TABLE app_security_packages ADD COLUMN moderation_status VARCHAR(24) NOT NULL DEFAULT 'pending'");
+        }
+    } catch (Throwable $error) {
+        // Existing installations already have package-level moderation status.
+    }
+    $db->exec("UPDATE app_security_packages SET moderation_status='approved' WHERE EXISTS (
+        SELECT 1 FROM app_release_security s WHERE s.object_key=app_security_packages.object_key AND s.moderation_status='approved' AND s.scan_status='clean'
+    )");
 
     $db->exec('CREATE INDEX IF NOT EXISTS idx_security_release_status ON app_release_security(moderation_status, scan_status, submitted_at)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_security_packages_uploader ON app_security_packages(uploader_id, created_at)');
@@ -485,7 +498,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             if (!valid_package_token($token)) json_response(['ok' => false, 'error' => 'Gói cài đặt không hợp lệ.'], 422);
             $objectKey = 'packages/' . $token;
             $package = hendystore_security_package_row($db, $objectKey);
-            if (!$package || (int)$package['uploader_id'] !== (int)$user['id'] || $package['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$package['sha256'])) {
+            if (!$package || (int)$package['uploader_id'] !== (int)$user['id'] || $package['moderation_status'] !== 'pending' || $package['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$package['sha256'])) {
                 json_response(['ok' => false, 'error' => 'Ứng dụng chỉ được gửi duyệt khi gói đã quét sạch và có SHA-256 hợp lệ.'], 409);
             }
             $video = trim((string)($input['video_url'] ?? ''));
