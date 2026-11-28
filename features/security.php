@@ -477,6 +477,13 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             if (!$package || (int)$package['uploader_id'] !== (int)$user['id'] || $package['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$package['sha256'])) {
                 json_response(['ok' => false, 'error' => 'Ứng dụng chỉ được gửi duyệt khi gói đã quét sạch và có SHA-256 hợp lệ.'], 409);
             }
+            $video = trim((string)($input['video_url'] ?? ''));
+            if ($video !== '') {
+                $videoParts = parse_url($video);
+                if (!filter_var($video, FILTER_VALIDATE_URL) || strtolower((string)($videoParts['scheme'] ?? '')) !== 'https' || empty($videoParts['host']) || isset($videoParts['user']) || isset($videoParts['pass'])) {
+                    json_response(['ok' => false, 'error' => 'Video giới thiệu phải là URL HTTPS hợp lệ.'], 422);
+                }
+            }
             $payload = array_merge($input, [
                 'developer' => (string)$profile['display_name'],
                 'downloadUrl' => 'file:' . $token,
@@ -510,13 +517,6 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 ':track' => $track, ':created' => $now,
             ]);
             hendystore_security_register_release($db, $productId, (int)$user['id'], 'file:' . $token, $track);
-            $video = trim((string)($input['video_url'] ?? ''));
-            if ($video !== '') {
-                $videoParts = parse_url($video);
-                if (!filter_var($video, FILTER_VALIDATE_URL) || strtolower((string)($videoParts['scheme'] ?? '')) !== 'https' || empty($videoParts['host']) || isset($videoParts['user']) || isset($videoParts['pass'])) {
-                    json_response(['ok' => false, 'error' => 'Video giới thiệu phải là URL HTTPS hợp lệ.'], 422);
-                }
-            }
             $specStmt = $db->prepare('INSERT INTO app_product_specs(product_id,video_url,minimum_requirements,privacy_details,updated_at) VALUES(:id,:video,:minimum,:privacy,:updated) ON CONFLICT(product_id) DO UPDATE SET video_url=EXCLUDED.video_url,minimum_requirements=EXCLUDED.minimum_requirements,privacy_details=EXCLUDED.privacy_details,updated_at=EXCLUDED.updated_at');
             $specStmt->execute([
                 ':id' => $productId,
