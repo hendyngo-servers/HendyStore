@@ -368,7 +368,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $name = basename(trim((string)($input['file_name'] ?? '')));
             $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
             $size = (int)($input['size'] ?? 0);
-            $allowed = ['apk','apks','xapk','zip','7z','rar','exe','msi','dmg','pkg','deb','rpm','tar','gz','pdf','appx','msix','appimage'];
+            $allowed = ['apk','apks','xapk','zip','7z','rar','exe','msi','dmg','pkg','deb','rpm','tar','gz','pdf','appx','msix','appimage','ipa'];
             $max = min(2 * 1024 * 1024 * 1024, max(1, (int)env_value('MAX_DIRECT_UPLOAD_BYTES', (string)(2 * 1024 * 1024 * 1024))));
             if ($name === '' || strlen($name) > 255 || !in_array($extension, $allowed, true) || $size < 1 || $size > $max) {
                 json_response(['ok' => false, 'error' => 'Tệp không đúng định dạng hoặc vượt quá giới hạn 2 GB.'], 422);
