@@ -21,6 +21,8 @@ function ProductCard({ product }: { product: StoreProduct }) {
   );
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const q = (params.q || "").slice(0, 100);
