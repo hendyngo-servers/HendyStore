@@ -30,3 +30,8 @@ GRANT SELECT ON TABLE public.api_public_catalog TO anonymous, authenticated;
 
 -- Make the new view visible to PostgREST without granting access to base tables.
 NOTIFY pgrst, 'reload schema';
+
+-- Record the migration for clean installs and repeatable deployments.
+INSERT INTO public.app_schema_migrations (migration_key, applied_at)
+VALUES ('20261128_public_catalog_data_api', NOW())
+ON CONFLICT (migration_key) DO NOTHING;
