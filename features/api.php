@@ -326,9 +326,16 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
                     foreach ($legacy as $item) if (is_string($item) && $item !== '') $shots[] = ['id' => 0, 'image_url' => $item, 'caption' => ''];
                 }
             }
-            $versionStmt = $db->prepare("SELECT id, version, release_notes, platform, architecture, min_os, package_size_bytes, is_current, created_at FROM app_versions WHERE product_id = :id AND release_track = 'production' ORDER BY is_current DESC, created_at DESC, id DESC");
+            $versionStmt = $db->prepare("SELECT id, version, release_notes, platform, architecture, min_os, package_url, package_size_bytes, is_current, created_at FROM app_versions WHERE product_id = :id AND release_track = 'production' ORDER BY is_current DESC, created_at DESC, id DESC");
             $versionStmt->execute([':id' => (int)$product['id']]);
-            $versions = $versionStmt->fetchAll();
+            $versionRows = $versionStmt->fetchAll();
+            $versions = [];
+            foreach ($versionRows as $candidate) {
+                if (hendystore_security_package_downloadable($db, (int)$product['id'], (string)$candidate['package_url'])) {
+                    unset($candidate['package_url']);
+                    $versions[] = $candidate;
+                }
+            }
             if (!$versions && !empty($product['download_url'])) {
                 $versions[] = [
                     'id' => 0, 'version' => $product['version'], 'release_notes' => '',
@@ -338,10 +345,18 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             }
             $stats = $db->prepare("SELECT COUNT(*) AS review_count, COALESCE(AVG(rating),0) AS average_rating FROM app_product_reviews WHERE product_id = :id AND status = 'approved'");
             $stats->execute([':id' => (int)$product['id']]);
-            $integrityStmt = $db->prepare("SELECT sha256,package_size_bytes FROM app_release_security WHERE product_id=:id AND moderation_status='approved' AND scan_status='clean' AND sha256 <> '' LIMIT 1");
-            $integrityStmt->execute([':id' => (int)$product['id']]);
-            $integrity = $integrityStmt->fetch() ?: null;
-            if ($integrity && !preg_match('/^[a-f0-9]{64}$/', (string)$integrity['sha256'])) $integrity = null;
+            $integrity = null;
+            foreach ($versionRows as $candidate) {
+                if (empty($candidate['is_current'])) continue;
+                $packageUrl = (string)$candidate['package_url'];
+                if (str_starts_with($packageUrl, 'file:')) {
+                    $package = hendystore_security_package_row($db, 'packages/' . substr($packageUrl, 5));
+                    if ($package && ($package['moderation_status'] ?? '') === 'approved' && ($package['scan_status'] ?? '') === 'clean' && preg_match('/^[a-f0-9]{64}$/', (string)$package['sha256'])) {
+                        $integrity = ['sha256' => $package['sha256'], 'package_size_bytes' => (int)$package['file_size_bytes']];
+                        break;
+                    }
+                }
+            }
             json_response(['ok' => true, 'data' => [
                 'screenshots' => $shots,
                 'versions' => $versions,
