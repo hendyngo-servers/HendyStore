@@ -213,7 +213,7 @@ function hendystore_feature_download(PDO $db): never
     $versionId = (int)($grant['version_id'] ?? 0);
     $version = null;
     if ($versionId > 0) {
-        $versionStmt = $db->prepare('SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id AND release_track = 'production' LIMIT 1');
+        $versionStmt = $db->prepare("SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id AND release_track = 'production' LIMIT 1");
         $versionStmt->execute([':id' => $versionId, ':product_id' => (int)$product['id']]);
         $version = $versionStmt->fetch() ?: null;
         if (!$version) {
@@ -258,6 +258,7 @@ function hendystore_feature_download(PDO $db): never
         ':user_agent' => $agent,
         ':created_at' => $now,
     ]);
+    hendystore_security_track_event($db, (int)$product['id'], 'download_completed');
     $update = $db->prepare('UPDATE products SET downloads = downloads + 1 WHERE id = :id');
     $update->execute([':id' => (int)$product['id']]);
     if ($userId !== null) {
@@ -497,7 +498,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $versionId = max(0, (int)($input['version_id'] ?? 0));
             $version = null;
             if ($versionId > 0) {
-                $versionStmt = $db->prepare('SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id LIMIT 1');
+                $versionStmt = $db->prepare("SELECT * FROM app_versions WHERE id = :id AND product_id = :product_id AND release_track = 'production' LIMIT 1");
                 $versionStmt->execute([':id' => $versionId, ':product_id' => (int)$product['id']]);
                 $version = $versionStmt->fetch() ?: null;
                 if (!$version) json_response(['ok' => false, 'error' => 'Phiên bản này không còn khả dụng.'], 404);
