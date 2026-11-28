@@ -28,12 +28,22 @@ function run(args) {
 async function readConfig() { return readFile(configPath, "utf8"); }
 async function appendBinding(block, binding) {
   const current = await readConfig();
-  const escaped = binding.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = binding.replace(/[.*+?^\x24{}()|[\]\\]/g, "\\$&");
   const activeBinding = new RegExp("^\\s*binding\\s*=\\s*[\"\\']" + escaped + "[\"\\']\\s*$", "m");
-  if (activeBinding.test(current)) return false;
+  const match = activeBinding.exec(current);
+  if (match) {
+    const nextSection = current.indexOf("\n[[", match.index + match[0].length);
+    const section = current.slice(match.index, nextSection < 0 ? current.length : nextSection);
+    const expected = block.trim().split(/\r?\n/).slice(2).filter(Boolean);
+    if (!expected.every((line) => section.includes(line))) {
+      throw new Error("Cloudflare binding " + binding + " already points to a different resource; refusing to overwrite it.");
+    }
+    return false;
+  }
   await writeFile(configPath, current.trimEnd() + "\n\n" + block.trim() + "\n", "utf8");
   return true;
 }
+
 function parseJson(text, label) {
   try { return JSON.parse(text); } catch { throw new Error("Could not safely parse Cloudflare " + label + " output."); }
 }
