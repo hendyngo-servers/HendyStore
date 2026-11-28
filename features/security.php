@@ -688,19 +688,42 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 // an overwrite between the first scan and manual review.
                 $verified = hendystore_security_scan_object($db, (string)$release['object_key'], (string)$release['sha256'], (int)$release['package_size_bytes']);
                 if (($verified['status'] ?? '') !== 'clean' || !isset($verified['sha256']) || !hash_equals((string)$release['sha256'], (string)$verified['sha256'])) {
-                    $block = $db->prepare("UPDATE products SET status='pending',featured=0,updated_at=:now WHERE id=:id");
-                    $block->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
                     $scanUpdate = $db->prepare('UPDATE app_release_security SET scan_status=:status,sha256=:sha,package_size_bytes=:size,updated_at=:now WHERE product_id=:id');
                     $scanUpdate->execute([':status' => (string)($verified['status'] ?? 'integrity_error'), ':sha' => (string)($verified['sha256'] ?? ''), ':size' => (int)($verified['size'] ?? 0), ':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
-                    json_response(['ok' => false, 'error' => 'Gói đã thay đổi hoặc chưa vượt qua lần quét xác minh cuối. Ứng dụng vẫn bị khóa ở trạng thái chờ.'], 409);
+                    $packageUpdate = $db->prepare("UPDATE app_security_packages SET moderation_status='pending' WHERE object_key=:key");
+                    $packageUpdate->execute([':key' => (string)$release['object_key']]);
+                    json_response(['ok' => false, 'error' => 'Gói đã thay đổi hoặc chưa vượt qua lần quét xác minh cuối. Bản phát hành mới vẫn bị khóa; phiên bản đã duyệt trước đó không bị ảnh hưởng.'], 409);
+                }
+                $packageApprove = $db->prepare("UPDATE app_security_packages SET moderation_status='approved' WHERE object_key=:key AND scan_status='clean' AND sha256=:sha");
+                $packageApprove->execute([':key' => (string)$release['object_key'], ':sha' => (string)$verified['sha256']]);
+                if ($packageApprove->rowCount() !== 1) {
+                    json_response(['ok' => false, 'error' => 'Không thể gắn trạng thái duyệt vào đúng gói cài đặt.'], 409);
                 }
                 if (($release['release_track'] ?? 'production') === 'production') {
-                    $publish = $db->prepare("UPDATE products SET status='published',updated_at=:now WHERE id=:id");
-                    $publish->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
+                    $packageUrl = 'file:' . basename((string)$release['object_key']);
+                    $versionStmt = $db->prepare("SELECT id,version,platform,package_url FROM app_versions WHERE product_id=:product AND package_url=:url AND release_track='production' ORDER BY created_at DESC,id DESC LIMIT 1");
+                    $versionStmt->execute([':product' => $productId, ':url' => $packageUrl]);
+                    $approvedVersion = $versionStmt->fetch();
+                    if (!$approvedVersion) {
+                        json_response(['ok' => false, 'error' => 'Không tìm thấy bản ghi phiên bản production tương ứng với gói đã duyệt.'], 409);
+                    }
+                    $clearCurrent = $db->prepare('UPDATE app_versions SET is_current=0 WHERE product_id=:product AND platform=:platform AND release_track=\'production\'');
+                    $clearCurrent->execute([':product' => $productId, ':platform' => (string)$approvedVersion['platform']]);
+                    $setCurrent = $db->prepare('UPDATE app_versions SET is_current=1 WHERE id=:id AND product_id=:product');
+                    $setCurrent->execute([':id' => (int)$approvedVersion['id'], ':product' => $productId]);
+                    $publish = $db->prepare("UPDATE products SET status='published',version=:version,download_url=:url,updated_at=:now WHERE id=:id");
+                    $publish->execute([':version' => (string)$approvedVersion['version'], ':url' => $packageUrl, ':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
                 }
             } else {
-                $reject = $db->prepare("UPDATE products SET status='rejected',featured=0,updated_at=:now WHERE id=:id");
-                $reject->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
+                $packageReject = $db->prepare("UPDATE app_security_packages SET moderation_status='rejected' WHERE object_key=:key");
+                $packageReject->execute([':key' => (string)$release['object_key']]);
+                $stillPublished = $db->prepare("SELECT COUNT(*) FROM app_versions v JOIN app_security_packages p ON p.object_key='packages/' || SUBSTR(v.package_url,6)
+                    WHERE v.product_id=:id AND v.release_track='production' AND p.moderation_status='approved' AND p.scan_status='clean'");
+                $stillPublished->execute([':id' => $productId]);
+                if ((int)$stillPublished->fetchColumn() < 1) {
+                    $reject = $db->prepare("UPDATE products SET status='rejected',featured=0,updated_at=:now WHERE id=:id");
+                    $reject->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
+                }
             }
             $update = $db->prepare('UPDATE app_release_security SET moderation_status=:status,review_note=:note,reviewed_by=:admin,reviewed_at=:now,updated_at=:now WHERE product_id=:id');
             $update->execute([':status' => $status, ':note' => $note, ':admin' => (int)$admin['id'], ':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
