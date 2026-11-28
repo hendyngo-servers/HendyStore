@@ -4,7 +4,8 @@
 
 - Production app database: Neon project `sparkling-grass-08962862`, branch `production`, database `Hendy_Store`.
 - Production identity provider: Neon Managed Better Auth, with identity data in the separate `neondb` database.
-- Auth settings currently enable email/password, disable public sign-up, and list Google with shared development credentials. A production Google OAuth Client ID/Secret is not configured.
+- Auth settings enable email/password and public sign-up. Email verification by OTP is required; automatic sign-in occurs after successful verification.
+- Google is still listed with shared development credentials. A production Google OAuth Client ID/Secret is not configured, so Google sign-in remains disabled in the website.
 - The production origin `https://hendystore.onrender.com` has been added to Neon Auth trusted origins.
 - `Hendy_Store` currently has one local Admin account and no customer accounts or products. Neon Auth currently has zero users and zero sessions.
 - `/admin/` continues to use its dedicated local email/password sign-in.
@@ -25,7 +26,9 @@
 4. In Neon Console → project → production branch → Auth → OAuth providers, configure Google using that Client ID and Client Secret. Never place the Client Secret in this repository, a browser bundle, or chat.
 5. Confirm `https://hendystore.onrender.com` is listed in Neon Auth trusted domains; it has been added for the production branch.
 6. Set Render variable `GOOGLE_OAUTH_ENABLED=true` only after the Google provider is saved and tested. Leave it false until then.
-7. Public sign-up is disabled today. Enabling first-time Google account creation is a separate policy change; review Neon Auth's Allow Sign Up setting before allowing it.
+7. **Allow Sign Up is enabled** on the production Neon Auth branch. First-time customer accounts can be created through Neon Auth; email verification remains required. The homepage registration tab is controlled by Render variable `NEON_AUTH_PUBLIC_SIGNUP=true`.
+8. The legacy PHP registration route remains closed with `ALLOW_REGISTRATION=false`; do not enable it as a side effect.
+9. The Google button stays hidden until a production OAuth Client ID/Secret is configured and `GOOGLE_OAUTH_ENABLED=true`.
 
 ## Identity and privilege boundaries
 

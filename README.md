@@ -66,6 +66,15 @@ PHP/Apache không chạy trực tiếp trên Workers/Pages. Mô hình hiện t�
 - Pages output folder: cloudflare/pages/public. Chưa có bản chuyển toàn bộ PHP templates thành Pages-native; Pages không phải PHP runtime.
 - Không cache API, login, admin hoặc file tải xuống riêng tư.
 
+## Neon Data API — danh mục công khai
+
+- Data API production được cấu hình qua biến Render `NEON_DATA_API_URL`; URL không phải bí mật, nhưng không đưa Neon API key hoặc mật khẩu database vào frontend.
+- Trình duyệt dùng JWT Neon Auth của tài khoản đã đăng nhập hoặc anonymous JWT có thời hạn ngắn để đọc view `public.api_public_catalog`.
+- View chỉ trả metadata của sản phẩm đã xuất bản; loại trừ URL gói cài đặt, tài khoản, phiên đăng nhập, đơn hàng, thanh toán, thư viện và lịch sử tải.
+- Vai trò Data API chỉ được `SELECT` trên view này, không có quyền trực tiếp trên 17 bảng nghiệp vụ hiện có.
+- `api.php` vẫn xử lý hồ sơ, Admin, chi tiết sản phẩm, upload, đánh giá, thư viện và tải xuống. Danh mục tự fallback về PHP API khi Data API không sẵn sàng.
+- `NEON_AUTH_PUBLIC_SIGNUP=true` điều khiển tab đăng ký khách hàng; Neon Auth vẫn bắt buộc xác minh email. Giữ `ALLOW_REGISTRATION=false` cho luồng đăng ký PHP cũ.
+
 ## Neon
 
 1. Database production đã chọn cho HendyStore: project sparkling-grass-08962862, branch production, database Hendy_Store.
