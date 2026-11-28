@@ -306,7 +306,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
 {
     $routes = [
         'developer_profile', 'developer_profile_save', 'developer_apps',
-        'developer_upload_intent', 'developer_upload_finalize', 'developer_submit',
+        'developer_upload_intent', 'developer_upload_finalize', 'developer_upload_status', 'developer_scan_refresh', 'developer_submit',
         'developer_analytics', 'developer_crash_report',
         'trust_queue', 'trust_developer_review', 'trust_release_review', 'trust_scan_refresh',
     ];
@@ -410,6 +410,61 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             json_response(['ok' => true, 'data' => ['scan' => $scan, 'sha256' => $scan['sha256'] ?? '', 'status' => $scan['status'] ?? 'error']]);
         }
 
+        case 'developer_upload_status': {
+            require_method('GET');
+            [$user] = hendystore_security_developer($db);
+            $token = trim((string)($_GET['object_token'] ?? ''));
+            if (!valid_package_token($token)) json_response(['ok' => false, 'error' => 'Mã gói không hợp lệ.'], 422);
+            $objectKey = 'packages/' . $token;
+            $package = hendystore_security_package_row($db, $objectKey);
+            if (!$package || (int)$package['uploader_id'] !== (int)$user['id']) json_response(['ok' => false, 'error' => 'Không có quyền xem gói tải này.'], 403);
+            json_response(['ok' => true, 'data' => [
+                'status' => (string)$package['scan_status'],
+                'sha256' => (string)$package['sha256'],
+                'size' => (int)$package['file_size_bytes'],
+                'scan_provider' => (string)$package['scan_provider'],
+                'scan_summary' => (string)$package['scan_summary'],
+                'scanned_at' => $package['scanned_at'],
+            ]]);
+        }
+
+        case 'developer_scan_refresh': {
+            require_method('POST');
+            require_csrf();
+            [$user] = hendystore_security_developer($db);
+            $input = request_data();
+            $token = trim((string)($input['object_token'] ?? ''));
+            if (!valid_package_token($token)) json_response(['ok' => false, 'error' => 'Mã gói không hợp lệ.'], 422);
+            $objectKey = 'packages/' . $token;
+            $package = hendystore_security_package_row($db, $objectKey);
+            if (!$package || (int)$package['uploader_id'] !== (int)$user['id']) json_response(['ok' => false, 'error' => 'Không có quyền kiểm tra gói tải này.'], 403);
+            $apiKey = (string)env_value('VIRUSTOTAL_API_KEY', '');
+            if ($apiKey !== '' && $package['scan_status'] === 'pending' && $package['analysis_id'] !== '') {
+                $result = hendystore_security_vt_request('https://www.virustotal.com/api/v3/analyses/' . rawurlencode((string)$package['analysis_id']), $apiKey);
+                $stats = $result['json']['data']['attributes']['stats'] ?? [];
+                $status = $result['http'] === 200 && is_array($stats) ? hendystore_security_stats_status($stats) : 'pending';
+                $scan = [
+                    'status' => $status,
+                    'provider' => 'VirusTotal',
+                    'analysis_id' => (string)$package['analysis_id'],
+                    'summary' => 'malicious=' . (int)($stats['malicious'] ?? 0) . '; suspicious=' . (int)($stats['suspicious'] ?? 0) . '; undetected=' . (int)($stats['undetected'] ?? 0),
+                    'scanned' => in_array($status, ['clean','malicious'], true),
+                ];
+                hendystore_security_save_scan($db, $objectKey, $scan, (string)$package['sha256'], (int)$package['file_size_bytes']);
+            } elseif ($package['scan_status'] !== 'clean') {
+                $scan = hendystore_security_scan_object($db, $objectKey, (string)$package['sha256'], (int)$package['file_size_bytes']);
+            } else {
+                $scan = ['status' => 'clean', 'provider' => (string)$package['scan_provider'], 'summary' => (string)$package['scan_summary'], 'sha256' => (string)$package['sha256']];
+            }
+            $fresh = hendystore_security_package_row($db, $objectKey);
+            json_response(['ok' => true, 'data' => [
+                'status' => (string)($fresh['scan_status'] ?? 'error'),
+                'sha256' => (string)($fresh['sha256'] ?? ''),
+                'size' => (int)($fresh['file_size_bytes'] ?? 0),
+                'scan_summary' => (string)($fresh['scan_summary'] ?? ''),
+            ]]);
+        }
+
         case 'developer_submit': {
             require_method('POST');
             require_csrf();
@@ -455,6 +510,21 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 ':track' => $track, ':created' => $now,
             ]);
             hendystore_security_register_release($db, $productId, (int)$user['id'], 'file:' . $token, $track);
+            $video = trim((string)($input['video_url'] ?? ''));
+            if ($video !== '') {
+                $videoParts = parse_url($video);
+                if (!filter_var($video, FILTER_VALIDATE_URL) || strtolower((string)($videoParts['scheme'] ?? '')) !== 'https' || empty($videoParts['host']) || isset($videoParts['user']) || isset($videoParts['pass'])) {
+                    json_response(['ok' => false, 'error' => 'Video giới thiệu phải là URL HTTPS hợp lệ.'], 422);
+                }
+            }
+            $specStmt = $db->prepare('INSERT INTO app_product_specs(product_id,video_url,minimum_requirements,privacy_details,updated_at) VALUES(:id,:video,:minimum,:privacy,:updated) ON CONFLICT(product_id) DO UPDATE SET video_url=EXCLUDED.video_url,minimum_requirements=EXCLUDED.minimum_requirements,privacy_details=EXCLUDED.privacy_details,updated_at=EXCLUDED.updated_at');
+            $specStmt->execute([
+                ':id' => $productId,
+                ':video' => $video,
+                ':minimum' => mb_substr_safe(trim((string)($input['minimum_requirements'] ?? '')), 8000),
+                ':privacy' => mb_substr_safe(trim((string)($input['privacy_details'] ?? '')), 8000),
+                ':updated' => $now,
+            ]);
             hendystore_security_audit($db, (int)$user['id'], 'release_submitted', 'product', (string)$productId, 'New release submitted for review.');
             json_response(['ok' => true, 'data' => ['product_id' => $productId, 'status' => 'pending', 'moderation_status' => 'pending']], 201);
         }
