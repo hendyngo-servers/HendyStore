@@ -7,7 +7,7 @@ Nền tảng App Store miễn phí, ưu tiên triển khai đa môi trường.
 | Lớp | Công nghệ hiện tại | Vai trò / trạng thái |
 |---|---|---|
 | Database | PostgreSQL trên Neon | Lưu ứng dụng, tài khoản, phiên bản, đánh giá, thư viện và lịch sử tải |
-| File storage | Neon / CloudFly / R2 / generic S3 adapters | PHP adapter supports one selected provider at a time; legacy Neon read fallback is available during migration. Actual provider selection still depends on valid production credentials and bucket probes |
+| File storage | Cloudflare R2 + Neon legacy fallback | Production Render now writes new objects to the private EU R2 bucket `hendy-store`; old Neon objects remain readable during reconciliation |
 | CDN / Edge | Cloudflare Workers / Pages proxy | Có mã proxy trong cloudflare/; chỉ thành edge/CDN production sau khi cấu hình ORIGIN_URL, DNS và deploy |
 | Backend / API | PHP 8.4 + Apache, PDO; optional Cloudflare Workers API adapter | PHP remains the business API and Neon data owner. Worker proxies to the Render origin, optionally probes an isolated D1 binding, and may cache the anonymous public catalogue in KV |
 | Frontend | Existing HTML/CSS/JavaScript + optional Next.js 16.4.6, React 19.3.1, Tailwind CSS 4.3.5 | Existing production pages remain; new SSR Next storefront source has Render Docker and Cloudflare Workers/OpenNext deployment targets, not yet deployed |
