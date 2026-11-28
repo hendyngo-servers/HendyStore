@@ -78,8 +78,38 @@ function renderApps() {
       ' · SHA-256: ' + esc(app.sha256 || 'Chưa có') +
       (app.review_note ? '<br>Ghi chú kiểm duyệt: ' + esc(app.review_note) : '') +
       '</small></div><div><span class="dev-badge ' + esc(mod) + '">' + esc(mod) + '</span> <span class="dev-badge ' + esc(scan) + '">' + esc(scan) + '</span> ' +
-      '<button class="dev-button subtle" type="button" data-analytics="' + Number(app.id) + '">Thống kê</button></div></article>';
+      '<button class="dev-button subtle" type="button" data-versions="' + Number(app.id) + '">Phiên bản</button> <button class="dev-button subtle" type="button" data-analytics="' + Number(app.id) + '">Thống kê</button></div><div id="versions-' + Number(app.id) + '" class="dev-list"></div></article>';
   }).join('');
+}
+
+async function loadVersions(productId) {
+  const target = $('#versions-' + productId);
+  if (!target) return;
+  target.textContent = 'Đang tải lịch sử phiên bản…';
+  try {
+    const result = await call('developer_versions', 'GET', null, { query: { product_id: productId } });
+    const versions = result.data || [];
+    if (!versions.length) {
+      target.innerHTML = '<div class="dev-state">Chưa có phiên bản Production nào được duyệt.</div>';
+      return;
+    }
+    target.innerHTML = versions.map((version) => '<article class="dev-row"><div><strong>v' + esc(version.version) + ' · ' + esc(version.platform) + '</strong><small>' +
+      'Dung lượng: ' + Number(version.package_size_bytes || 0).toLocaleString('vi-VN') + ' bytes<br>SHA-256: ' + esc(version.sha256) +
+      '<br>Phát hành: ' + esc(version.created_at) + '</small></div><div>' +
+      (Number(version.is_current) === 1 ? '<span class="dev-badge approved">Đang sử dụng</span>' :
+        '<button class="dev-button subtle" type="button" data-rollback-product="' + productId + '" data-rollback-version="' + Number(version.id) + '">Khôi phục bản này</button>') +
+      '</div></article>').join('');
+  } catch (error) {
+    setState(target, error.message, 'error');
+  }
+}
+
+async function rollbackVersion(productId, versionId) {
+  if (!window.confirm('Khôi phục phiên bản Production này? Phiên bản sẽ trở thành bản tải mặc định cho nền tảng tương ứng.')) return;
+  await call('developer_rollback', 'POST', { product_id: productId, version_id: versionId });
+  notify('Đã khôi phục phiên bản Production.');
+  await loadWorkspace();
+  await loadVersions(productId);
 }
 
 async function loadAnalytics(productId) {
@@ -280,8 +310,13 @@ function bindEvents() {
     if (event.target.matches('.dev-review-reply')) submitDeveloperReply(event);
   });
   $('#developerApps')?.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-analytics]');
-    if (button) loadAnalytics(Number(button.dataset.analytics));
+    const versionsButton = event.target.closest('[data-versions]');
+    const analyticsButton = event.target.closest('[data-analytics]');
+    const rollbackButton = event.target.closest('[data-rollback-version]');
+    if (versionsButton) loadVersions(Number(versionsButton.dataset.versions));
+    if (analyticsButton) loadAnalytics(Number(analyticsButton.dataset.analytics));
+    if (rollbackButton) rollbackVersion(Number(rollbackButton.dataset.rollbackProduct), Number(rollbackButton.dataset.rollbackVersion))
+      .catch((error) => notify(error.message));
   });
 }
 
