@@ -65,7 +65,7 @@ services:
       - key: MAX_UPLOAD_BYTES
         value: "209715200"
       - key: MAX_DIRECT_UPLOAD_BYTES
-        value: "2147483648"
+        value: "681574400"
       - key: VIRUSTOTAL_API_KEY
         sync: false
       - key: CODE_SIGNING_SERVICE_URL
