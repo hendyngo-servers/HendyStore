@@ -82,6 +82,34 @@ PHP/Apache không chạy trực tiếp trên Workers/Pages. Mô hình hiện t�
 3. Bucket private hendy-store-files; credentials lưu trong Render environment.
 4. Chạy schema/migration additive; không xóa bảng hoặc dữ liệu người dùng/ứng dụng hiện có.
 
+## Trust, Safety & Developer Console
+
+HendyStore adds a private developer release pipeline and an admin moderation queue:
+
+- Developer profiles must be approved by an administrator before package submission.
+- New developer releases are created as `pending`; they are not listed in the public catalogue.
+- Package uploads use short-lived presigned PUT URLs to the private `hendy-store-files` bucket. The PHP application does not proxy the large upload body.
+- The backend reads the stored object, calculates SHA-256, and checks VirusTotal. Only a `clean` scan can enter manual approval.
+- Admin approval re-checks file existence, SHA-256, and malware scan after the five-minute upload URL has expired (six-minute minimum age for presigned uploads).
+- Public app details disclose only the verified SHA-256 and package size for an approved release. Package object keys and provider credentials remain private.
+- Admin moderation: `/admin/security.php`. Developer Console: `/developer/`.
+
+### Production configuration
+
+1. Set `VIRUSTOTAL_API_KEY` in Render Environment. Do not put it in HTML, JavaScript, Git, or browser requests. If this key is absent or VirusTotal does not return a clean scan, the release stays blocked.
+2. Keep `hendy-store-files` private with public access blocked. Configure bucket CORS for the exact Storefront origin (for example `https://hendystore.onrender.com`), method `PUT`, allowed header `*`, expose `ETag`, and a short max age. Do not enable anonymous object reads.
+3. Set `MAX_DIRECT_UPLOAD_BYTES=681574400` (650 MiB) or a lower operational limit. The Developer Console uploads directly to Object Storage; the legacy Admin multipart upload remains capped separately.
+4. Confirm `NEON_AUTH_BASE_URL` and `NEON_AUTH_JWKS_URL` refer to the same Neon Auth project/domain, and allow the Storefront origin in Neon Auth.
+5. New additive tables and the `app_versions.release_track` / `app_security_packages.upload_method` columns are initialized by the API module. Do not drop existing tables or user/order data.
+
+### Product limitations / integrations
+
+- Windows, macOS, Android and Linux downloads are selected from the published production build. iOS packages can be submitted for private review, but direct IPA sideload is intentionally blocked; distribute iOS apps through App Store, TestFlight or MDM.
+- Alpha/Beta/Production metadata is stored and Alpha/Beta releases are excluded from the public Storefront. A tester cohort / invitation workflow and one-click rollback UI are not included yet.
+- Current analytics include product views, download preparation/completion and submitted crash reports. Install/uninstall telemetry requires an SDK in each native app and is not inferred from downloads.
+- HendyStore is currently a free-only catalogue; a paid-app ranking is therefore not applicable.
+- Code signing is not active yet. `CODE_SIGNING_SERVICE_URL` and `CODE_SIGNING_SERVICE_TOKEN` are placeholders for a separate HSM/Key Vault signing adapter. Never upload .p12/.pfx/.keystore private keys to the public app package bucket.
+
 ## Kiểm thử & triển khai
 
 1. npm ci && npm run build && npm test
