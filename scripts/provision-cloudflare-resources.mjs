@@ -79,6 +79,10 @@ if (kvId) {
   const block = ["[[kv_namespaces]]", 'binding = "CACHE"', 'id = "' + kvId + '"'].join("\n");
   if (await appendBinding(block, "CACHE")) report.push("Added existing KV namespace binding CACHE.");
 } else if (process.env.CF_CREATE_KV === "true") {
+  const current = await readConfig();
+  if (/^\\s*binding\\s*=\\s*[\"\\']CACHE[\"\\']\\s*$/m.test(current)) {
+    throw new Error("CACHE binding already exists. Pass CF_KV_NAMESPACE_ID to attach an existing namespace instead of creating a replacement.");
+  }
   run(["kv", "namespace", "create", kvName, "--binding", "CACHE", "--update-config", "--config", configPath]);
   report.push("Created KV namespace " + kvName + " and added CACHE binding.");
 }
@@ -112,15 +116,22 @@ async function configureHyperdrive({ binding, name, id, connectionString, protoc
   }
   if (!connectionString) return;
   if (!connectionString.toLowerCase().startsWith(protocol + "://")) throw new Error(binding + " connection string uses the wrong database protocol.");
-  const args = ["hyperdrive", "create", name, "--connection-string", connectionString];
+  const current = await readConfig();
+  const escaped = binding.replace(/[.*+?^\x24{}()|[\]\\]/g, "\\  const args = ["hyperdrive", "create", name, "--connection-string", connectionString];
   run(args);
   const entriesText = run(["hyperdrive", "list"]);
-  const lines = entriesText.split(/\\r?\\n/).filter(Boolean);
+  const lines = entriesText.split(/\r?\n/).filter(Boolean);
   const match = lines.find((line) => line.includes(name));
   const idMatch = match?.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   if (!idMatch) throw new Error("Hyperdrive was created but its id could not be verified; add it manually before deploying.");
   const block = ["[[hyperdrive]]", 'binding = "' + binding + '"', 'id = "' + idMatch[0] + '"'].join("\n");
-  if (await appendBinding(block, binding)) report.push("Created and bound Hyperdrive " + name + ".");
+  if (await appendBinding(block, binding)) report.push("Created and bound Hyperdrive " + name + ".");");
+  const active = new RegExp("^\\s*binding\\s*=\\s*[\"\\']" + escaped + "[\"\\']\\s*$", "m");
+  if (active.test(current)) {
+    throw new Error("Cloudflare binding " + binding + " already exists. Pass its existing ID or reconcile the binding before creating a new Hyperdrive config.");
+  }
+  run(["hyperdrive", "create", name, "--connection-string", connectionString, "--binding", binding, "--update-config", "--config", configPath]);
+  report.push("Created Hyperdrive " + name + " and added binding " + binding + ".");
 }
 await configureHyperdrive({
   binding: "HYPERDRIVE",
