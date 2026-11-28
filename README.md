@@ -125,16 +125,20 @@ HendyStore adds a private developer release pipeline and an admin moderation que
 
 ## S3-Compatible Object Storage
 
-The storage adapter supports the existing Neon Object Storage provider and CloudFly S3-compatible storage. Neon PostgreSQL and Neon Auth remain unchanged. CloudFly is not active until `OBJECT_STORAGE_PROVIDER=cloudfly` and a private CloudFly bucket plus credentials are configured in Render.
+Production currently uses **Cloudflare R2** for new object writes, while Neon PostgreSQL remains the business database.
 
-- CloudFly endpoint: `https://s3.cloudfly.vn`
-- CloudFly region/signature: `hn` / AWS Signature V4
-- Path-style addressing is enabled for CloudFly.
-- The app writes new files to the selected provider. When CloudFly is primary, reads may fall back to the legacy Neon bucket for old `media/` and `packages/` objects.
-- Keep the existing Neon `AWS_*` / `NEON_STORAGE_BUCKET` variables until every legacy object has been copied and verified.
-- Browser direct upload requires bucket CORS for the exact Storefront domain and `PUT`; keep the bucket private and do not add public-read ACLs.
+- Provider: `OBJECT_STORAGE_PROVIDER=r2`
+- Bucket: `hendy-store` (EU jurisdiction, private; public r2.dev disabled)
+- Endpoint: `https://918ff2f016938fc978ed23b96505b21e.eu.r2.cloudflarestorage.com`
+- Signing region: `auto`, path-style addressing enabled.
+- CORS: only `https://hendystore.onrender.com`, method `PUT`, header `*`, expose `ETag`, max age 300 seconds.
+- Render stores the bucket-scoped Object Read & Write S3 credentials. Access keys are never committed or sent to browser code.
+- The Neon object-storage credentials and read fallback remain enabled while old `media/` and `packages/` objects are being reconciled. New writes go to R2 only.
+- CloudFly S3 and generic S3 remain selectable adapters, but they are not the current production provider.
 
-See [CloudFly Object Storage setup and migration](docs/cloudfly-object-storage.md).
+The production health endpoint has returned `ok:true` with `database=postgresql` and `storage=s3-compatible:r2`. This verifies PostgreSQL connectivity and the R2 bucket probe; an application-level package upload/download round trip is a separate test.
+
+See [CloudFly Object Storage setup and migration](docs/cloudfly-object-storage.md) and [Cloudflare + Render + Neon architecture](docs/architecture/target-architecture.md).
 
 ## Kiểm thử & triển khai
 
