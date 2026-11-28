@@ -37,6 +37,7 @@ function hendystore_security_schema(PDO $db): void
         scan_provider VARCHAR(60) NOT NULL DEFAULT '',
         analysis_id TEXT NOT NULL DEFAULT '',
         scan_summary TEXT NOT NULL DEFAULT '',
+        upload_method VARCHAR(20) NOT NULL DEFAULT 'presigned',
         scanned_at TIMESTAMP NULL,
         created_at TIMESTAMP NOT NULL,
         updated_at TIMESTAMP NOT NULL
@@ -94,6 +95,15 @@ function hendystore_security_schema(PDO $db): void
         $db->exec("ALTER TABLE app_versions ADD COLUMN release_track VARCHAR(20) NOT NULL DEFAULT 'production'");
     } catch (Throwable $error) {
         // Existing installations already have this additive column.
+    }
+    try {
+        if ($driver === 'pgsql') {
+            $db->exec("ALTER TABLE app_security_packages ADD COLUMN IF NOT EXISTS upload_method VARCHAR(20) NOT NULL DEFAULT 'presigned'");
+        } else {
+            $db->exec("ALTER TABLE app_security_packages ADD COLUMN upload_method VARCHAR(20) NOT NULL DEFAULT 'presigned'");
+        }
+    } catch (Throwable $error) {
+        // Existing SQLite/MySQL installations already have this additive column.
     }
 
     $db->exec('CREATE INDEX IF NOT EXISTS idx_security_release_status ON app_release_security(moderation_status, scan_status, submitted_at)');
@@ -388,7 +398,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             }
             $now = date('Y-m-d H:i:s');
             $stmt = $db->prepare("INSERT INTO app_security_packages(object_key,uploader_id,original_name,file_size_bytes,scan_status,created_at,updated_at)
-                VALUES(:key,:user,:name,:size,'awaiting_upload',:created,:updated)");
+                VALUES(:key,:user,:name,:size,'awaiting_upload','presigned',:created,:updated)");
             $stmt->execute([':key' => $objectKey, ':user' => (int)$user['id'], ':name' => $name, ':size' => $size, ':created' => $now, ':updated' => $now]);
             json_response(['ok' => true, 'data' => ['upload_url' => (string)$request->getUri(), 'object_token' => $token, 'content_type' => $mime, 'expires_in' => 900]]);
         }
@@ -610,7 +620,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             if (!$release) json_response(['ok' => false, 'error' => 'Không tìm thấy hồ sơ phát hành.'], 404);
             if ($status === 'approved') {
                 $packageRow = hendystore_security_package_row($db, (string)$release['object_key']);
-                if ($packageRow && strtotime((string)$packageRow['created_at']) > time() - 360) {
+                if ($packageRow && ($packageRow['upload_method'] ?? 'presigned') === 'presigned' && strtotime((string)$packageRow['created_at']) > time() - 360) {
                     json_response(['ok' => false, 'error' => 'Chờ ít nhất 6 phút sau khi tải tệp lên để URL upload hết hạn hoàn toàn trước khi xuất bản.'], 409);
                 }
                 if ($release['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$release['sha256']) || !neon_storage_exists((string)$release['object_key'])) {
