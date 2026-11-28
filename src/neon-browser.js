@@ -19,7 +19,7 @@ async function loadNeonClientConfig() {
 
 const ready = (async () => {
   const config = await loadNeonClientConfig();
-  const auth = config.authEnabled && config.authUrl ? createAuthClient(config.authUrl) : null;
+  const auth = config.authEnabled && config.authUrl ? createAuthClient(config.authUrl, { allowAnonymous: true }) : null;
   let realtimeClient = null;
   let liveSubscription = null;
   let renewTimer = null;
@@ -28,11 +28,36 @@ const ready = (async () => {
   async function getToken() {
     if (!auth) return null;
     try {
-      const result = await auth.token();
+      // Neon Auth's browser SDK exposes a JWT accessor. The token is sent to
+      // the PHP API for server-side JWKS validation; no auth secret is exposed.
+      const token = await auth.getJWTToken?.();
+      if (typeof token === "string" && token.length > 0) return token;
+    } catch {
+      // Fall through to the Better Auth session response for SDK compatibility.
+    }
+    try {
+      const result = await auth.getSession?.();
       if (result?.error) return null;
-      return result?.data?.token || null;
+      const session = result?.data?.session ?? result?.session ?? null;
+      const token = session?.access_token ?? session?.token ?? null;
+      return typeof token === "string" && token.length > 0 ? token : null;
     } catch {
       return null;
+    }
+  }
+
+  async function getSession() {
+    if (!auth) return { user: null, session: null };
+    try {
+      const result = await auth.getSession?.();
+      if (result?.error) return { user: null, session: null };
+      const data = result?.data ?? result ?? {};
+      return {
+        user: data?.user ?? data?.session?.user ?? null,
+        session: data?.session ?? null,
+      };
+    } catch {
+      return { user: null, session: null };
     }
   }
 
@@ -96,15 +121,11 @@ const ready = (async () => {
 
   async function getDataApiToken() {
     if (!auth) throw new Error("Neon Auth is required to access the Data API.");
-    const signedIn = await getToken();
-    if (signedIn) return signedIn;
-    if (typeof auth.getAnonymousToken !== "function") {
-      throw new Error("This Neon Auth client does not provide anonymous Data API tokens.");
-    }
-    const result = await auth.getAnonymousToken();
-    if (result?.error) throw new Error(result.error.message || "Unable to obtain an anonymous Data API token.");
-    const token = result?.data?.token || result?.token;
-    if (!token) throw new Error("Neon Auth returned an empty Data API token.");
+    // allowAnonymous=true lets getJWTToken return a short-lived anonymous JWT
+    // when no customer session exists, while authenticated sessions retain
+    // their own identity and database role.
+    const token = await getToken();
+    if (!token) throw new Error("Neon Auth could not issue a Data API JWT. Check the Auth configuration.");
     return token;
   }
 
@@ -190,6 +211,7 @@ const ready = (async () => {
     listPublicCatalog,
     getDataApiToken,
     getToken,
+    getSession,
     async signIn(email, password) {
       if (!auth) throw new Error("Neon Auth chưa được cấu hình. Kiểm tra NEON_AUTH_BASE_URL trên Render.");
       const result = await auth.signIn.email({ email, password });
@@ -223,6 +245,10 @@ window.HendyNeon = {
   async getToken() {
     const client = await ready;
     return client.getToken();
+  },
+  async getSession() {
+    const client = await ready;
+    return client.getSession();
   },
   async signIn(email, password) {
     const client = await ready;
