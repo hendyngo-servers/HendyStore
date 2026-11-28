@@ -159,7 +159,7 @@ if (process.env.CF_DATABASE_PROVIDER) {
   const index = lines.findIndex((line) => line.trimStart().startsWith("DATABASE_PROVIDER ="));
   if (index < 0) throw new Error("DATABASE_PROVIDER is missing from Worker TOML.");
   lines[index] = 'DATABASE_PROVIDER = "' + value + '"';
-  updated = lines.join("\\n");
+  updated = lines.join("\n");
   report.push("Selected Worker database provider " + value + ".");
 }
 if (process.env.CF_OBJECT_STORAGE_PROVIDER) {
@@ -169,7 +169,7 @@ if (process.env.CF_OBJECT_STORAGE_PROVIDER) {
   const index = lines.findIndex((line) => line.trimStart().startsWith("OBJECT_STORAGE_PROVIDER ="));
   if (index < 0) throw new Error("OBJECT_STORAGE_PROVIDER is missing from Worker TOML.");
   lines[index] = 'OBJECT_STORAGE_PROVIDER = "' + value + '"';
-  updated = lines.join("\\n");
+  updated = lines.join("\n");
   report.push("Selected Worker storage provider " + value + ".");
 }
 if (updated !== current) await writeFile(configPath, updated, "utf8");
