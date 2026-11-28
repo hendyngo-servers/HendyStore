@@ -89,12 +89,56 @@ async function loadAnalytics(productId) {
     const result = await call('developer_analytics', 'GET', null, { query: { product_id: productId } });
     const data = result.data;
     const eventRows = data.events.map((event) => '<article class="dev-row"><div><strong>' + esc(event.event_type) + '</strong><small>' + esc(event.platform) + '</small></div><b>' + Number(event.total).toLocaleString('vi-VN') + '</b></article>').join('');
+    const dayTotals = new Map();
+    (data.daily || []).forEach((item) => dayTotals.set(item.day, (dayTotals.get(item.day) || 0) + Number(item.total || 0)));
+    const maxDaily = Math.max(1, ...dayTotals.values());
+    const dailyRows = [...dayTotals.entries()].map(([day, total]) => '<div class="dev-analytics-row"><span>' + esc(day) + '</span><div class="dev-analytics-track"><i style="width:' + Math.max(2, Math.round(total / maxDaily * 100)) + '%"></i></div><b>' + total.toLocaleString('vi-VN') + '</b></div>').join('');
     const crashRows = data.crashes.map((crash) => '<article class="dev-row"><div><strong>' + esc(crash.version || 'Không rõ phiên bản') + ' · ' + esc(crash.platform) + '</strong><small>' + esc(crash.error_message) + '</small></div><span class="dev-badge">' + esc(crash.status) + '</span></article>').join('');
-    target.innerHTML = '<div class="dev-state">Sản phẩm: ' + esc(data.product.title) + ' · Tổng lượt tải tích lũy: ' + Number(data.product.downloads).toLocaleString('vi-VN') + '</div>' +
-      '<h3>Sự kiện trong hệ thống</h3>' + (eventRows || '<p>Chưa có sự kiện.</p>') +
+    target.innerHTML = '<div class="dev-state">Sản phẩm: ' + esc(data.product.title) + ' · Tổng lượt tải hoàn tất: ' + Number(data.product.downloads).toLocaleString('vi-VN') + '</div>' +
+      '<h3>Hoạt động 30 ngày gần đây</h3>' + (dailyRows || '<p>Chưa có dữ liệu trong 30 ngày.</p>') +
+      '<h3>Tổng hợp sự kiện theo nền tảng</h3>' + (eventRows || '<p>Chưa có sự kiện.</p>') +
       '<h3>Báo cáo lỗi</h3>' + (crashRows || '<p>Chưa có crash report.</p>');
   } catch (error) {
     setState(target, error.message, 'error');
+  }
+}
+
+async function loadDeveloperReviews() {
+  const target = $('#developerReviews');
+  if (!target) return;
+  try {
+    const result = await call('developer_reviews');
+    const reviews = result.data || [];
+    if (!reviews.length) {
+      target.innerHTML = '<div class="dev-state">Chưa có đánh giá đã duyệt cho ứng dụng của bạn.</div>';
+      return;
+    }
+    target.innerHTML = reviews.map((review) => {
+      const replyBox = review.status === 'approved'
+        ? '<form class="dev-review-reply" data-review-id="' + Number(review.id) + '"><label class="dev-field">Phản hồi của nhà phát triển<textarea name="reply" maxlength="2000" required>' + esc(review.developer_reply || '') + '</textarea></label><button class="dev-button subtle" type="submit">Lưu phản hồi</button></form>'
+        : '<span class="dev-badge pending">Đánh giá đang chờ kiểm duyệt</span>';
+      return '<article class="dev-card"><strong>' + esc(review.product_title) + ' · ' + esc(review.author_name) + '</strong><div class="dev-meta">Đánh giá: ' + '★'.repeat(Number(review.rating)) + '☆'.repeat(5-Number(review.rating)) + ' · ' + esc(review.created_at) + '</div><p>' + esc(review.review_text) + '</p>' + replyBox + '</article>';
+    }).join('');
+  } catch (error) {
+    setState(target, error.message, 'error');
+  }
+}
+
+async function submitDeveloperReply(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const result = await call('developer_review_reply', 'POST', {
+      review_id: Number(form.dataset.reviewId),
+      reply: form.elements.reply.value,
+    });
+    notify('Đã lưu phản hồi đánh giá.');
+    await loadDeveloperReviews();
+  } catch (error) {
+    notify(error.message);
+    button.disabled = false;
   }
 }
 
@@ -117,6 +161,7 @@ async function loadWorkspace() {
     const apps = await call('developer_apps');
     state.apps = apps.data || [];
     renderApps();
+    await loadDeveloperReviews();
   } else {
     $('#developerApps').innerHTML = '<div class="dev-state">Hồ sơ nhà phát triển phải được duyệt trước khi quản lý phát hành.</div>';
   }
@@ -214,7 +259,7 @@ async function submitRelease(event) {
       object_token: state.packageToken,
       icon: 'images/dummy.png',
       cover: 'images/dummy.png',
-      screenshots: [],
+      screenshots: String(form.screenshots_urls || '').split(/\\r?\\n/).map((value) => value.trim()).filter(Boolean).slice(0, 12),
     };
     const created = await call('developer_submit', 'POST', payload);
     setState($('#releaseResult'), 'Đã gửi phát hành vào hàng chờ kiểm duyệt.\nMã ứng dụng: #' + created.data.product_id +
@@ -231,6 +276,9 @@ async function submitRelease(event) {
 function bindEvents() {
   $('#developerProfileForm')?.addEventListener('submit', submitProfile);
   $('#releaseForm')?.addEventListener('submit', submitRelease);
+  $('#developerReviews')?.addEventListener('submit', (event) => {
+    if (event.target.matches('.dev-review-reply')) submitDeveloperReply(event);
+  });
   $('#developerApps')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-analytics]');
     if (button) loadAnalytics(Number(button.dataset.analytics));
