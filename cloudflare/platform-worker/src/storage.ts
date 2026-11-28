@@ -24,7 +24,9 @@ function s3Options(env: Env): { endpoint: string; region: string; bucket: string
     region ||= "hn";
   } else if (provider === "r2") {
     const accountId = String(env.CLOUDFLARE_ACCOUNT_ID || "");
-    endpoint ||= accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "";
+    const jurisdiction = String(env.OBJECT_STORAGE_JURISDICTION || "").toLowerCase();
+    const suffix = jurisdiction === "eu" ? ".eu" : jurisdiction === "us" ? ".us" : jurisdiction === "fedramp" ? ".fedramp" : "";
+    endpoint ||= accountId ? `https://${accountId}${suffix}.r2.cloudflarestorage.com` : "";
     region ||= "auto";
   } else if (provider === "s3") {
     region ||= "us-east-1";

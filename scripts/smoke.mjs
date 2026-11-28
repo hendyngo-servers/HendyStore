@@ -52,6 +52,9 @@ for (const token of [
 assert.ok(workerSource.includes('incoming.searchParams.get("action") === "products"'), "KV cache must be limited to the public catalogue action");
 assert.ok(workerSource.includes('!request.headers.has("Authorization")'), "KV cache must exclude authenticated requests");
 assert.ok(workerSource.includes('!request.headers.has("Cookie")'), "KV cache must exclude cookie-bearing requests");
+for (const token of ["__hendy_health__", "CACHE.put", "CACHE.get", "CACHE.delete", "R2.put", "R2.get", "R2.delete", "env.DB.prepare"]) {
+  assert.ok(workerSource.includes(token), "Missing live Cloudflare binding health probe: " + token);
+}
 
 const workerDatabase = await readFile("cloudflare/platform-worker/src/database.ts", "utf8");
 for (const token of ["origin", "env.DB", "prepare", "SELECT 1"]) {
@@ -183,5 +186,17 @@ for (const token of [
 ]) {
   assert.ok(browserSource.includes(token), "Missing browser integration: " + token);
 }
+
+const pagesProvision = await readFile("scripts/ensure-cloudflare-pages-project.mjs", "utf8");
+assert.ok(pagesProvision.includes("/pages/projects"), "Pages deployment must ensure its project exists first");
+assert.ok(pagesProvision.includes("hendystore-pages"), "Pages provisioning must target the dedicated HendyStore project");
+const deploymentWorkflow = await readFile(".github/workflows/deploy-platform.yml", "utf8");
+assert.ok(deploymentWorkflow.includes("workflow_dispatch:"), "Cloudflare deployments must be manual");
+for (const target of ["provision", "worker", "next", "pages", "all"]) {
+  assert.ok(deploymentWorkflow.includes("- " + target), "Missing Cloudflare deployment target: " + target);
+}
+assert.ok(deploymentWorkflow.includes("secrets.CLOUDFLARE_API_TOKEN"), "Cloudflare deployments must use an encrypted repository secret");
+assert.ok(!deploymentWorkflow.includes("HYPERDRIVE"), "Deployment workflow must not configure Hyperdrive");
+assert.ok(!deploymentWorkflow.includes("MYSQL_HYPERDRIVE"), "Deployment workflow must not configure MySQL Hyperdrive");
 
 console.log("Neon source smoke test passed: Auth, least-privilege Data API catalogue, Object Storage, Functions, AI Gateway and Realtime.");

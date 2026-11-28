@@ -1,11 +1,14 @@
-name = "hendy-store-platform-api"
+name = "hendy-platform-api"
 main = "src/index.ts"
+account_id = "918ff2f016938fc978ed23b96505b21e"
 compatibility_date = "2026-11-28"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [vars]
 HENDY_API_ORIGIN = "https://hendystore.onrender.com"
+CLOUDFLARE_ACCOUNT_ID = "918ff2f016938fc978ed23b96505b21e"
+OBJECT_STORAGE_JURISDICTION = "eu"
 DATABASE_PROVIDER = "origin"
 OBJECT_STORAGE_PROVIDER = "neon"
 OBJECT_STORAGE_REGION = "auto"

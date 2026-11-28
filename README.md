@@ -7,7 +7,7 @@ Nền tảng App Store miễn phí, ưu tiên triển khai đa môi trường.
 | Lớp | Công nghệ hiện tại | Vai trò / trạng thái |
 |---|---|---|
 | Database | PostgreSQL trên Neon | Lưu ứng dụng, tài khoản, phiên bản, đánh giá, thư viện và lịch sử tải |
-| File storage | Neon / CloudFly / R2 / generic S3 adapters | PHP adapter supports one selected provider at a time; legacy Neon read fallback is available during migration. Actual provider selection still depends on valid production credentials and bucket probes |
+| File storage | Cloudflare R2 + Neon legacy fallback | Production Render now writes new objects to the private EU R2 bucket `hendy-store`; old Neon objects remain readable during reconciliation |
 | CDN / Edge | Cloudflare Workers / Pages proxy | Có mã proxy trong cloudflare/; chỉ thành edge/CDN production sau khi cấu hình ORIGIN_URL, DNS và deploy |
 | Backend / API | PHP 8.4 + Apache, PDO; optional Cloudflare Workers API adapter | PHP remains the business API and Neon data owner. Worker proxies to the Render origin, optionally probes an isolated D1 binding, and may cache the anonymous public catalogue in KV |
 | Frontend | Existing HTML/CSS/JavaScript + optional Next.js 16.4.6, React 19.3.1, Tailwind CSS 4.3.5 | Existing production pages remain; new SSR Next storefront source has Render Docker and Cloudflare Workers/OpenNext deployment targets, not yet deployed |
@@ -59,11 +59,15 @@ Các công nghệ dưới đây là lựa chọn nâng cấp, không phải thà
 
 ## Cloudflare Workers và Pages
 
-PHP/Apache không chạy trực tiếp trên Workers/Pages. Mô hình hiện tại là Cloudflare làm edge proxy/CDN, PHP vẫn chạy tại Render hoặc VPS:
-- Worker reverse proxy: cloudflare/worker.js; deploy với Wrangler, đặt ORIGIN_URL là URL HTTPS của Render/VPS.
-- Pages Advanced Mode Worker: cloudflare/pages/public/_worker.js; Pages phục vụ static assets và proxy route động/PHP về ORIGIN_URL.
-- Pages output folder: cloudflare/pages/public. Chưa có bản chuyển toàn bộ PHP templates thành Pages-native; Pages không phải PHP runtime.
-- Không cache API, login, admin hoặc file tải xuống riêng tư.
+PHP/Apache và Neon PostgreSQL tiếp tục chạy trên Render. Cloudflare cung cấp lớp edge và các điểm triển khai độc lập:
+- API Worker: `cloudflare/platform-worker`, cập nhật Worker có sẵn `hendy-platform-api` tại `https://hendy-platform-api.ngogiaidy56.workers.dev`; Neon được gọi qua HTTPS Render origin, không dùng Hyperdrive.
+- Next.js SSR: `apps/storefront-next`, build bằng OpenNext và deploy thành Worker `hendystore-next` tại `https://hendystore-next.ngogiaidy56.workers.dev`. Job này chỉ chạy khi GitHub Actions variable `CF_ENABLE_NEXT_WORKER=true` và Cloudflare token có quyền Workers Admin để tạo Worker mới.
+- Pages: `cloudflare/pages/public`, project `hendystore-pages` tại `https://hendystore-pages.pages.dev`, phục vụ static assets và proxy route động/PHP về Render.
+- R2, KV và D1 được gắn bằng binding native. Health endpoint của API Worker thử R2 put/get/delete một object tạm, KV put/get/delete key tạm và D1 `SELECT 1`.
+- Tài khoản Cloudflare hiện chưa có Zone/domain tùy chỉnh; dùng `workers.dev` và `pages.dev` trước, custom domain chỉ cấu hình sau khi Zone có sẵn.
+- GitHub Actions deploy chỉ chạy thủ công qua workflow `Deploy HendyStore platform targets`; các target gồm `provision`, `worker`, `next`, `pages`, `all`.
+
+Để bật deploy CI, thêm GitHub repository secret `CLOUDFLARE_API_TOKEN` trong Settings → Secrets and variables → Actions. Account ID là giá trị công khai đã đặt trong Wrangler config, không cần lưu thành secret. Không gửi token qua chat hoặc commit vào mã nguồn.
 
 ## Neon Data API — danh mục công khai
 
@@ -125,16 +129,20 @@ HendyStore adds a private developer release pipeline and an admin moderation que
 
 ## S3-Compatible Object Storage
 
-The storage adapter supports the existing Neon Object Storage provider and CloudFly S3-compatible storage. Neon PostgreSQL and Neon Auth remain unchanged. CloudFly is not active until `OBJECT_STORAGE_PROVIDER=cloudfly` and a private CloudFly bucket plus credentials are configured in Render.
+Production currently uses **Cloudflare R2** for new object writes, while Neon PostgreSQL remains the business database.
 
-- CloudFly endpoint: `https://s3.cloudfly.vn`
-- CloudFly region/signature: `hn` / AWS Signature V4
-- Path-style addressing is enabled for CloudFly.
-- The app writes new files to the selected provider. When CloudFly is primary, reads may fall back to the legacy Neon bucket for old `media/` and `packages/` objects.
-- Keep the existing Neon `AWS_*` / `NEON_STORAGE_BUCKET` variables until every legacy object has been copied and verified.
-- Browser direct upload requires bucket CORS for the exact Storefront domain and `PUT`; keep the bucket private and do not add public-read ACLs.
+- Provider: `OBJECT_STORAGE_PROVIDER=r2`
+- Bucket: `hendy-store` (EU jurisdiction, private; public r2.dev disabled)
+- Endpoint: `https://918ff2f016938fc978ed23b96505b21e.eu.r2.cloudflarestorage.com`
+- Signing region: `auto`, path-style addressing enabled.
+- CORS: only `https://hendystore.onrender.com`, method `PUT`, header `*`, expose `ETag`, max age 300 seconds.
+- Render stores the bucket-scoped Object Read & Write S3 credentials. Access keys are never committed or sent to browser code.
+- The Neon object-storage credentials and read fallback remain enabled while old `media/` and `packages/` objects are being reconciled. New writes go to R2 only.
+- CloudFly S3 and generic S3 remain selectable adapters, but they are not the current production provider.
 
-See [CloudFly Object Storage setup and migration](docs/cloudfly-object-storage.md).
+The production health endpoint has returned `ok:true` with `database=postgresql` and `storage=s3-compatible:r2`. This verifies PostgreSQL connectivity and the R2 bucket probe; an application-level package upload/download round trip is a separate test.
+
+See [CloudFly Object Storage setup and migration](docs/cloudfly-object-storage.md) and [Cloudflare + Render + Neon architecture](docs/architecture/target-architecture.md).
 
 ## Kiểm thử & triển khai
 
