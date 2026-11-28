@@ -32,7 +32,7 @@ jobs:
           node-version: "22"
       - name: Validate Cloudflare token
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Add CLOUDFLARE_API_TOKEN as a GitHub Actions repository secret."; exit 1; }
       - name: Install Worker tooling
@@ -40,7 +40,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Ensure and bind R2, KV and D1 resources
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
           CF_R2_BUCKET_NAME: "hendy-store"
           CF_R2_PRIVATE_ACCESS_CONFIRMED: "true"
@@ -56,7 +56,7 @@ jobs:
       - name: Deploy Platform API Worker
         working-directory: cloudflare/platform-worker
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
         run: npx wrangler deploy --config wrangler.toml
 
@@ -70,7 +70,7 @@ jobs:
           node-version: "22"
       - name: Validate Cloudflare token
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Add CLOUDFLARE_API_TOKEN as a GitHub Actions repository secret."; exit 1; }
       - name: Install Next.js and OpenNext dependencies
@@ -82,7 +82,7 @@ jobs:
       - name: Deploy Next.js SSR Worker
         working-directory: apps/storefront-next
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
         run: npm run cf:deploy
 
@@ -96,24 +96,24 @@ jobs:
           node-version: "22"
       - name: Validate Cloudflare token
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Add CLOUDFLARE_API_TOKEN as a GitHub Actions repository secret."; exit 1; }
       - name: Ensure HendyStore Pages project exists
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
           CF_PAGES_PROJECT_NAME: "hendystore-pages"
           CF_PAGES_PRODUCTION_BRANCH: "main"
         run: node scripts/ensure-cloudflare-pages-project.mjs
       - name: Set the Render origin for Pages Functions
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
-          CF_PAGES_ORIGIN_URL: \${{ vars.CF_PAGES_ORIGIN_URL || 'https://hendystore.onrender.com' }}
+          CF_PAGES_ORIGIN_URL: ${{ vars.CF_PAGES_ORIGIN_URL || 'https://hendystore.onrender.com' }}
         run: printf '%s' "$CF_PAGES_ORIGIN_URL" | npx --yes wrangler pages secret put ORIGIN_URL --project-name hendystore-pages
       - name: Deploy HendyStore Pages proxy
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
         run: npx --yes wrangler pages deploy cloudflare/pages/public --project-name hendystore-pages --branch main
