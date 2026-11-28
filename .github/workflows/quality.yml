@@ -118,5 +118,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Build Next.js application
         run: npm run build
+      - name: Build OpenNext Cloudflare Worker artifact
+        run: npm run cf:build
       - name: Typecheck Next.js application
         run: npm run typecheck
