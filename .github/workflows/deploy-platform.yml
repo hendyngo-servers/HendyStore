@@ -44,6 +44,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: "918ff2f016938fc978ed23b96505b21e"
           CF_R2_BUCKET_NAME: "hendy-store"
           CF_R2_PRIVATE_ACCESS_CONFIRMED: "true"
+          CF_R2_JURISDICTION: "eu"
           CF_CREATE_R2: "false"
           CF_CREATE_KV: "true"
           CF_KV_NAMESPACE_NAME: "hendystore-catalog-cache"
@@ -61,7 +62,7 @@ jobs:
         run: npx wrangler deploy --config wrangler.toml
 
   deploy-next:
-    if: inputs.target == 'next' || inputs.target == 'all'
+    if: (inputs.target == 'next' || inputs.target == 'all') && vars.CF_ENABLE_NEXT_WORKER == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
