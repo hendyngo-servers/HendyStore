@@ -96,6 +96,7 @@ header('Cache-Control: no-store, private');
 <label class="dev-field">Hệ điều hành mục tiêu<select name="release_platform"><option value="windows">Windows</option><option value="macos">macOS</option><option value="android">Android</option><option value="linux">Linux</option><option value="web">Web</option><option value="universal">Đa nền tảng</option></select></label>
 <label class="dev-field">Video giới thiệu (URL HTTPS)<input name="video_url" type="url" placeholder="https://..."></label>
 <label class="dev-field wide">Nhật ký thay đổi<textarea name="release_notes" placeholder="Các thay đổi trong phiên bản này"></textarea></label>
+<label class="dev-field wide">Ảnh chụp màn hình (mỗi URL HTTPS một dòng, tối đa 12)<textarea name="screenshots_urls" placeholder="https://cdn.example.com/screenshot-1.png&#10;https://cdn.example.com/screenshot-2.png"></textarea></label>
 <label class="dev-field wide">Cấu hình tối thiểu<textarea name="minimum_requirements" placeholder="Ví dụ: Windows 10 64-bit, RAM 4 GB..."></textarea></label>
 <label class="dev-field wide">Thông tin quyền riêng tư<textarea name="privacy_details" placeholder="Dữ liệu ứng dụng thu thập và mục đích sử dụng"></textarea></label>
 <label class="dev-field wide">Gói cài đặt (APK, EXE, MSI, DMG, ZIP...)<input id="releasePackage" type="file" accept=".ipa,.apk,.apks,.xapk,.zip,.7z,.rar,.exe,.msi,.dmg,.pkg,.deb,.rpm,.tar,.gz,.pdf,.appx,.msix,.appimage" required></label>
@@ -110,6 +111,10 @@ header('Cache-Control: no-store, private');
 
 <section class="dev-card dev-card-full" id="analyticsCard">
 <span class="dev-kicker">PRODUCT ANALYTICS</span><h2>Thống kê ứng dụng</h2><div id="analyticsContent" class="dev-list"><p>Chọn ứng dụng đã phát hành để xem thống kê.</p></div>
+</section>
+
+<section class="dev-card dev-card-full" id="developerReviewsCard">
+<span class="dev-kicker">CUSTOMER FEEDBACK</span><h2>Đánh giá & phản hồi</h2><div id="developerReviews" class="dev-list"><p>Đánh giá đã duyệt từ người dùng sẽ xuất hiện tại đây.</p></div>
 </section>
 
 <section class="dev-card">
