@@ -397,10 +397,10 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 json_response(['ok' => false, 'error' => 'Không thể khởi tạo tải trực tiếp lên kho cloud. Kiểm tra cấu hình Object Storage.'], 503);
             }
             $now = date('Y-m-d H:i:s');
-            $stmt = $db->prepare("INSERT INTO app_security_packages(object_key,uploader_id,original_name,file_size_bytes,scan_status,created_at,updated_at)
+            $stmt = $db->prepare("INSERT INTO app_security_packages(object_key,uploader_id,original_name,file_size_bytes,scan_status,upload_method,created_at,updated_at)
                 VALUES(:key,:user,:name,:size,'awaiting_upload','presigned',:created,:updated)");
             $stmt->execute([':key' => $objectKey, ':user' => (int)$user['id'], ':name' => $name, ':size' => $size, ':created' => $now, ':updated' => $now]);
-            json_response(['ok' => true, 'data' => ['upload_url' => (string)$request->getUri(), 'object_token' => $token, 'content_type' => $mime, 'expires_in' => 900]]);
+            json_response(['ok' => true, 'data' => ['upload_url' => (string)$request->getUri(), 'object_token' => $token, 'content_type' => $mime, 'expires_in' => 300]]);
         }
 
         case 'developer_upload_finalize': {
