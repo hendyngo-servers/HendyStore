@@ -259,7 +259,7 @@ async function submitRelease(event) {
       object_token: state.packageToken,
       icon: 'images/dummy.png',
       cover: 'images/dummy.png',
-      screenshots: String(form.screenshots_urls || '').split(/\\r?\\n/).map((value) => value.trim()).filter(Boolean).slice(0, 12),
+      screenshots: String(form.screenshots_urls || '').split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 12),
     };
     const created = await call('developer_submit', 'POST', payload);
     setState($('#releaseResult'), 'Đã gửi phát hành vào hàng chờ kiểm duyệt.\nMã ứng dụng: #' + created.data.product_id +
