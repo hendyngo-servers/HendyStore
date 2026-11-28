@@ -96,6 +96,7 @@ $schema=$product?[
 <section class="store-feature-card"><h2>Ảnh chụp màn hình</h2><div id="storeScreenshots"><p class="store-muted">Đang tải ảnh…</p></div></section>
 <section class="store-feature-card"><h2>Video giới thiệu</h2><div class="store-video" id="storeVideo"><span class="store-muted">Đang tải video…</span></div></section>
 <section class="store-feature-card"><h2>Nhật ký thay đổi</h2><div id="storeChangelog"><p class="store-muted">Đang tải phiên bản…</p></div></section>
+<section class="store-feature-card"><h2>Kiểm tra tính toàn vẹn tệp</h2><div class="store-specs" id="storeIntegrity">Đang xác minh SHA-256…</div></section>
 <section class="store-feature-card"><h2>Ứng dụng tương tự</h2><div id="storeRelated" class="store-related-grid"><p class="store-muted">Đang tìm ứng dụng cùng danh mục…</p></div></section>
 <div class="detail-description">
   <section class="store-feature-card"><h2>Cấu hình tối thiểu</h2><div class="store-specs" id="storeRequirements">Đang tải thông tin…</div></section>
