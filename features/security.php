@@ -661,7 +661,10 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             if (!$release) json_response(['ok' => false, 'error' => 'Không tìm thấy hồ sơ phát hành.'], 404);
             if ($status === 'approved') {
                 $packageRow = hendystore_security_package_row($db, (string)$release['object_key']);
-                if ($packageRow && ($packageRow['upload_method'] ?? 'presigned') === 'presigned' && strtotime((string)$packageRow['created_at']) > time() - 360) {
+                if (!$packageRow) {
+                    json_response(['ok' => false, 'error' => 'Không tìm thấy hồ sơ gói tải riêng tư để xác minh.'], 409);
+                }
+                if (($packageRow['upload_method'] ?? 'presigned') === 'presigned' && strtotime((string)$packageRow['created_at']) > time() - 360) {
                     json_response(['ok' => false, 'error' => 'Chờ ít nhất 6 phút sau khi tải tệp lên để URL upload hết hạn hoàn toàn trước khi xuất bản.'], 409);
                 }
                 if ($release['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$release['sha256']) || !neon_storage_exists((string)$release['object_key'])) {
