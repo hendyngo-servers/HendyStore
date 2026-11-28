@@ -105,7 +105,7 @@ HendyStore adds a private developer release pipeline and an admin moderation que
 ### Product limitations / integrations
 
 - Windows, macOS, Android and Linux downloads are selected from the published production build. iOS packages can be submitted for private review, but direct IPA sideload is intentionally blocked; distribute iOS apps through App Store, TestFlight or MDM.
-- Alpha/Beta/Production metadata is stored and Alpha/Beta releases are excluded from the public Storefront. A tester cohort / invitation workflow and one-click rollback UI are not included yet.
+- Alpha/Beta/Production metadata is stored; Alpha/Beta releases are excluded from the public Storefront. Approved Production version history is available to developers, and a previously approved build can be restored. Tester cohort / invitation distribution is not included yet.
 - Current analytics include product views, download preparation/completion and submitted crash reports. Install/uninstall telemetry requires an SDK in each native app and is not inferred from downloads.
 - HendyStore is currently a free-only catalogue; a paid-app ranking is therefore not applicable.
 - Code signing is not active yet. `CODE_SIGNING_SERVICE_URL` and `CODE_SIGNING_SERVICE_TOKEN` are placeholders for a separate HSM/Key Vault signing adapter. Never upload .p12/.pfx/.keystore private keys to the public app package bucket.
