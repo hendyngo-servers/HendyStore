@@ -98,7 +98,7 @@ header('Cache-Control: no-store, private');
 <label class="dev-field wide">Nhật ký thay đổi<textarea name="release_notes" placeholder="Các thay đổi trong phiên bản này"></textarea></label>
 <label class="dev-field wide">Cấu hình tối thiểu<textarea name="minimum_requirements" placeholder="Ví dụ: Windows 10 64-bit, RAM 4 GB..."></textarea></label>
 <label class="dev-field wide">Thông tin quyền riêng tư<textarea name="privacy_details" placeholder="Dữ liệu ứng dụng thu thập và mục đích sử dụng"></textarea></label>
-<label class="dev-field wide">Gói cài đặt (APK, EXE, MSI, DMG, ZIP...)<input id="releasePackage" type="file" accept=".apk,.apks,.xapk,.zip,.7z,.rar,.exe,.msi,.dmg,.pkg,.deb,.rpm,.tar,.gz,.pdf,.appx,.msix,.appimage" required></label>
+<label class="dev-field wide">Gói cài đặt (APK, EXE, MSI, DMG, ZIP...)<input id="releasePackage" type="file" accept=".ipa,.apk,.apks,.xapk,.zip,.7z,.rar,.exe,.msi,.dmg,.pkg,.deb,.rpm,.tar,.gz,.pdf,.appx,.msix,.appimage" required></label>
 <div class="dev-field wide"><button class="dev-button" id="submitRelease" type="submit">Tải lên cloud & kiểm tra bảo mật</button></div>
 </form>
 <div class="dev-state" id="releaseResult" style="margin-top:14px">Chưa gửi phát hành.</div>
