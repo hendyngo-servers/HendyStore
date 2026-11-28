@@ -9,7 +9,7 @@ Nền tảng App Store miễn phí, ưu tiên triển khai đa môi trường.
 | Database | PostgreSQL trên Neon | Lưu ứng dụng, tài khoản, phiên bản, đánh giá, thư viện và lịch sử tải |
 | File storage | Neon / CloudFly / R2 / generic S3 adapters | PHP adapter supports one selected provider at a time; legacy Neon read fallback is available during migration. Actual provider selection still depends on valid production credentials and bucket probes |
 | CDN / Edge | Cloudflare Workers / Pages proxy | Có mã proxy trong cloudflare/; chỉ thành edge/CDN production sau khi cấu hình ORIGIN_URL, DNS và deploy |
-| Backend / API | PHP 8.4 + Apache, PDO; optional Cloudflare Workers API adapter | PHP remains the business API and Neon data owner. Worker proxies to the Render origin, optionally probes an isolated D1 binding, and may cache the anonymous public catalogue in KV. Hyperdrive is not used |
+| Backend / API | PHP 8.4 + Apache, PDO; optional Cloudflare Workers API adapter | PHP remains the business API and Neon data owner. Worker proxies to the Render origin, optionally probes an isolated D1 binding, and may cache the anonymous public catalogue in KV |
 | Frontend | Existing HTML/CSS/JavaScript + optional Next.js 16.4.6, React 19.3.1, Tailwind CSS 4.3.5 | Existing production pages remain; new SSR Next storefront source has Render Docker and Cloudflare Workers/OpenNext deployment targets, not yet deployed |
 | Build tooling | Node.js 22, npm, esbuild | Build browser bundle tích hợp Neon |
 | Authentication | Neon Auth (Managed Better Auth/JWKS) + PHP session fallback cho Admin | Email/password; Google OAuth UI có feature flag; role customer/admin; HttpOnly, CSRF |
@@ -79,7 +79,7 @@ PHP/Apache không chạy trực tiếp trên Workers/Pages. Mô hình hiện t�
 The multi-cloud adapter code and deployment targets are documented in [docs/architecture/multi-cloud-platform.md](docs/architecture/multi-cloud-platform.md).
 
 - Object Storage providers: neon, cloudfly, r2 and generic s3. Select exactly one provider for new writes. Keep the legacy Neon bucket available for read fallback until object counts, sizes and SHA-256 checks have been reconciled.
-- Database: Neon PostgreSQL remains the canonical business database behind the Render PHP origin. Cloudflare Workers call the HTTPS origin directly; Hyperdrive and MySQL adapters are not used. D1 is a separate optional edge database and does not mirror Neon.
+- Database: Neon PostgreSQL remains the canonical business database behind the Render PHP origin. Cloudflare Workers call the HTTPS origin directly. The Worker database adapter exposes only the origin and optional D1 binding. D1 is a separate optional edge database and does not mirror Neon.
 - D1 is an independent SQLite database for optional edge-local data/probes. It is not an automatic mirror of Neon PostgreSQL; no dual-write or automatic migration is enabled.
 - Next storefront: apps/storefront-next. Build for Render with its Dockerfile and the optional render.next.yaml Blueprint, or build for Cloudflare Workers through OpenNext. Cloudflare documents vinext as its recommended default for new Next.js applications; it is actively developed and may have compatibility gaps, so this project keeps OpenNext as the broad-compatibility path until the exact feature set is verified.
 - Cloudflare API Worker: cloudflare/platform-worker. It proxies the existing PHP API and provides platform health/capabilities. It does not bypass PHP auth/CSRF or replace all PHP business logic.
