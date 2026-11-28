@@ -786,7 +786,7 @@ function validate_product_input(array $input): array {
 function present_product(array $p,bool $full=false): array {
     $url=(string)($p['download_url']??'');
     $out=['id'=>(int)$p['id'],'slug'=>$p['slug'],'title'=>$p['title'],'developer'=>$p['developer'],'category'=>$p['category'],
-        'shortDescription'=>$p['short_description'],'version'=>$p['version'],'platform'=>$p['platform'],'priceType'=>'Free','priceAmountVnd'=>0,
+        'shortDescription'=>$p['short_description'],'version'=>$p['version'],'platform'=>$p['platform'],'priceType'=>(string)($p['price_type']??'Free'),'priceAmountVnd'=>(int)($p['price_amount_vnd']??0),
         'icon'=>$p['icon'],'cover'=>$p['cover'],'downloads'=>(int)$p['downloads'],'rating'=>(float)$p['rating'],'featured'=>(bool)$p['featured']];
     if ($full) { $out['description']=$p['description']; $out['screenshots']=json_decode((string)$p['screenshots_json'],true)?:[];
         $out['downloadUrlConfigured']=$url!==''; $out['canDownload']=$url!==''; $out['status']=$p['status']; }
