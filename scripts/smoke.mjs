@@ -85,7 +85,7 @@ assert.ok(infraPage.includes('id="infraWorkspace" hidden'), "Infrastructure cont
 assert.ok(infraClient.includes("user?.role === 'admin'"), "Infrastructure page must require an Admin session");
 const platformWorkflow = await readFile(".github/workflows/deploy-platform.yml", "utf8");
 assert.ok(platformWorkflow.includes("workflow_dispatch:"), "Cloudflare deployments must be manually triggered");
-assert.ok(!platformWorkflow.includes("on:\\n  push:"), "Cloudflare deployments must not auto-run on normal pushes");
+assert.ok(!/^\s+push:/m.test(platformWorkflow.split("\n").slice(0,12).join("\n")), "Cloudflare deployments must not auto-run on normal pushes");
 
 for (const [path, token] of [
   ["js/custom.261126163157.js", "response.status===419"],
