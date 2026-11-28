@@ -3,6 +3,8 @@ import { getProduct, productSummary, publicAsset } from "@/lib/api";
 
 type Params = Promise<{ slug: string }>;
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
   const product = await getProduct(slug);
