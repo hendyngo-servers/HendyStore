@@ -82,17 +82,19 @@ if (process.env.CF_CREATE_R2 === "true" || r2Name) {
   if (process.env.CF_R2_PRIVATE_ACCESS_CONFIRMED !== "true") {
     throw new Error("Confirm that public access is disabled for the selected R2 bucket before binding it.");
   }
-  const buckets = namedItems(parseJson(run(["r2", "bucket", "list", "--json"]), "R2 bucket list"));
+  const jurisdiction = String(process.env.CF_R2_JURISDICTION || "").toLowerCase();
+  if (jurisdiction && !["eu", "us", "fedramp"].includes(jurisdiction)) throw new Error("CF_R2_JURISDICTION must be eu, us, or fedramp.");
+  const buckets = namedItems(parseJson(run(["r2", "bucket", "list", ...(jurisdiction ? ["--jurisdiction", jurisdiction] : []), "--json"]), "R2 bucket list"));
   let exists = buckets.some((item) => item.name === r2Name || item.bucketName === r2Name);
   if (!exists && process.env.CF_CREATE_R2 === "true") {
-    run(["r2", "bucket", "create", r2Name, "--location", process.env.CF_R2_LOCATION || "weur"]);
-    const refreshed = namedItems(parseJson(run(["r2", "bucket", "list", "--json"]), "R2 bucket list"));
+    run(["r2", "bucket", "create", r2Name, ...(jurisdiction ? ["--jurisdiction", jurisdiction] : []), "--location", process.env.CF_R2_LOCATION || "weur"]);
+    const refreshed = namedItems(parseJson(run(["r2", "bucket", "list", ...(jurisdiction ? ["--jurisdiction", jurisdiction] : []), "--json"]), "R2 bucket list"));
     exists = refreshed.some((item) => item.name === r2Name || item.bucketName === r2Name);
     if (!exists) throw new Error("R2 create command completed but the bucket could not be verified.");
     report.push("Created an empty private R2 bucket " + r2Name + ".");
   }
   if (!exists) throw new Error("Selected R2 bucket does not exist; enable CF_CREATE_R2 to create it.");
-  const block = ["[[r2_buckets]]", 'binding = "R2"', 'bucket_name = "' + r2Name + '"'].join("\n");
+  const block = ["[[r2_buckets]]", 'binding = "R2"', 'bucket_name = "' + r2Name + '"', ...(jurisdiction ? ['jurisdiction = "' + jurisdiction + '"'] : [])].join("\n");
   if (await appendBinding(block, "R2")) report.push("Bound existing R2 bucket " + r2Name + ".");
   else report.push("R2 binding already targets " + r2Name + "; retained.");
 }
