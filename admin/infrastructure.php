@@ -30,7 +30,8 @@ header('Cache-Control: no-store, private');
 <nav class="main-nav"><a class="nav-link" href="./">Quản trị</a><a class="nav-link" href="security.php">Kiểm duyệt & Bảo mật</a><a class="nav-link active" href="infrastructure.php">Kết nối & Hạ tầng</a></nav>
 <div class="header-actions"><a class="account-button" href="../">← Về website</a></div>
 </header>
-<main class="infra-shell">
+<main id="infraDenied" class="infra-shell" hidden><section class="infra-card"><h1>Yêu cầu quyền quản trị</h1><p class="infra-muted">Vui lòng đăng nhập tài khoản Admin để truy cập Trung tâm Kết nối & Hạ tầng.</p><a class="infra-btn" href="./">Đến Admin Console</a></section></main>
+<main class="infra-shell" id="infraWorkspace" hidden>
 <section class="infra-hero"><span class="infra-kicker">PLATFORM CONNECTION CENTER</span><h1>Kết nối & Hạ tầng</h1><p>Quản lý định hướng kết nối Database, Object Storage, Render và Cloudflare. Secret luôn được lưu ở Environment/Secrets của nhà cung cấp, không lưu trong trình duyệt hoặc Git.</p><div class="infra-actions"><a class="infra-btn" href="https://dashboard.render.com/web/srv-dc4v9lp7lnhs73a1i4k0" target="_blank" rel="noopener">Render Environment ↗</a><a class="infra-btn alt" href="https://dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare Dashboard ↗</a><a class="infra-btn alt" href="https://console.neon.tech/" target="_blank" rel="noopener">Neon Console ↗</a></div></section>
 <div class="infra-grid">
 <section class="infra-card"><span class="infra-kicker">DATABASE ROUTER</span><h2>Database & Query Engine</h2><p class="infra-muted">Chọn đúng engine ở từng runtime. Neon PostgreSQL hiện vẫn là nguồn dữ liệu HendyStore production.</p>
