@@ -357,7 +357,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
     $routes = [
         'developer_profile', 'developer_profile_save', 'developer_apps',
         'developer_upload_intent', 'developer_upload_finalize', 'developer_upload_status', 'developer_scan_refresh', 'developer_submit',
-        'developer_analytics', 'developer_crash_report', 'developer_reviews', 'developer_review_reply',
+        'developer_analytics', 'developer_crash_report', 'developer_reviews', 'developer_review_reply', 'developer_versions', 'developer_rollback',
         'trust_queue', 'trust_developer_review', 'trust_release_review', 'trust_scan_refresh',
     ];
     if (!in_array($action, $routes, true)) return false;
@@ -623,6 +623,60 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $crashes = $db->prepare('SELECT id,version,platform,error_message,status,created_at FROM app_crash_reports WHERE product_id=:id ORDER BY created_at DESC LIMIT 50');
             $crashes->execute([':id' => $productId]);
             json_response(['ok' => true, 'data' => ['product' => $product, 'events' => $events->fetchAll(), 'daily' => $daily->fetchAll(), 'crashes' => $crashes->fetchAll()]]);
+        }
+
+        case 'developer_versions': {
+            require_method('GET');
+            [$user] = hendystore_security_developer($db);
+            $productId = (int)($_GET['product_id'] ?? 0);
+            $owned = $db->prepare('SELECT p.id FROM products p JOIN app_release_security s ON s.product_id=p.id WHERE p.id=:id AND s.developer_user_id=:user LIMIT 1');
+            $owned->execute([':id' => $productId, ':user' => (int)$user['id']]);
+            if (!$owned->fetchColumn()) json_response(['ok' => false, 'error' => 'Không tìm thấy ứng dụng thuộc hồ sơ nhà phát triển.'], 404);
+            $stmt = $db->prepare("SELECT v.id,v.version,v.platform,v.architecture,v.package_size_bytes,v.is_current,v.created_at,v.release_notes,
+                    p.sha256,p.moderation_status,p.scan_status
+                FROM app_versions v
+                JOIN app_security_packages p ON p.object_key='packages/' || SUBSTR(v.package_url,6)
+                WHERE v.product_id=:product AND v.release_track='production'
+                    AND p.moderation_status='approved' AND p.scan_status='clean'
+                ORDER BY v.platform ASC,v.created_at DESC,v.id DESC");
+            $stmt->execute([':product' => $productId]);
+            json_response(['ok' => true, 'data' => $stmt->fetchAll()]);
+        }
+
+        case 'developer_rollback': {
+            require_method('POST');
+            require_csrf();
+            [$user] = hendystore_security_developer($db);
+            $input = request_data();
+            $productId = (int)($input['product_id'] ?? 0);
+            $versionId = (int)($input['version_id'] ?? 0);
+            if ($productId < 1 || $versionId < 1) json_response(['ok' => false, 'error' => 'Ứng dụng hoặc phiên bản không hợp lệ.'], 422);
+            $owned = $db->prepare("SELECT p.id,s.moderation_status FROM products p JOIN app_release_security s ON s.product_id=p.id WHERE p.id=:id AND s.developer_user_id=:user LIMIT 1");
+            $owned->execute([':id' => $productId, ':user' => (int)$user['id']]);
+            $app = $owned->fetch();
+            if (!$app) json_response(['ok' => false, 'error' => 'Không tìm thấy ứng dụng thuộc hồ sơ nhà phát triển.'], 404);
+            if ($app['moderation_status'] === 'pending') json_response(['ok' => false, 'error' => 'Hãy hoàn tất kiểm duyệt phiên bản đang chờ trước khi khôi phục bản cũ.'], 409);
+            $stmt = $db->prepare("SELECT v.id,v.version,v.platform,v.package_url,v.package_size_bytes,p.object_key,p.sha256,p.scan_status,p.moderation_status
+                FROM app_versions v
+                JOIN app_security_packages p ON p.object_key='packages/' || SUBSTR(v.package_url,6)
+                WHERE v.id=:version AND v.product_id=:product AND v.release_track='production'
+                    AND p.moderation_status='approved' AND p.scan_status='clean' LIMIT 1");
+            $stmt->execute([':version' => $versionId, ':product' => $productId]);
+            $version = $stmt->fetch();
+            if (!$version || !preg_match('/^[a-f0-9]{64}$/', (string)$version['sha256']) || !neon_storage_exists((string)$version['object_key'])) {
+                json_response(['ok' => false, 'error' => 'Chỉ được khôi phục phiên bản Production đã quét sạch và được duyệt.'], 409);
+            }
+            $now = date('Y-m-d H:i:s');
+            $clear = $db->prepare("UPDATE app_versions SET is_current=0 WHERE product_id=:product AND platform=:platform AND release_track='production'");
+            $clear->execute([':product' => $productId, ':platform' => (string)$version['platform']]);
+            $set = $db->prepare('UPDATE app_versions SET is_current=1 WHERE id=:id AND product_id=:product');
+            $set->execute([':id' => $versionId, ':product' => $productId]);
+            $productUpdate = $db->prepare("UPDATE products SET status='published',version=:version,download_url=:url,updated_at=:now WHERE id=:id");
+            $productUpdate->execute([':version' => (string)$version['version'], ':url' => (string)$version['package_url'], ':now' => $now, ':id' => $productId]);
+            $security = $db->prepare("UPDATE app_release_security SET object_key=:key,moderation_status='approved',scan_status='clean',sha256=:sha,package_size_bytes=:size,release_track='production',submitted_at=:now,updated_at=:now WHERE product_id=:id");
+            $security->execute([':key' => (string)$version['object_key'], ':sha' => (string)$version['sha256'], ':size' => (int)$version['package_size_bytes'], ':now' => $now, ':id' => $productId]);
+            hendystore_security_audit($db, (int)$user['id'], 'production_version_rollback', 'product', (string)$productId, 'Restored release version #' . $versionId);
+            json_response(['ok' => true, 'data' => ['version_id' => $versionId, 'version' => (string)$version['version']]]);
         }
 
         case 'developer_reviews': {
