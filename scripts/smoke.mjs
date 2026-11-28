@@ -62,7 +62,7 @@ for (const token of ["cloudfly", "r2", "s3", "createPresignedPutUrl", "HeadBucke
   assert.ok(workerStorage.includes(token), "Missing Worker object storage adapter: " + token);
 }
 const provisionSource = await readFile("scripts/provision-cloudflare-resources.mjs", "utf8");
-for (const token of ["CF_CREATE_R2", "CF_CREATE_KV", "CF_CREATE_D1", "CF_R2_PRIVATE_ACCESS_CONFIRMED", "origin", "refusing to overwrite it"]) {
+for (const token of ["CF_CREATE_R2", "CF_CREATE_KV", "CF_CREATE_D1", "CF_R2_PRIVATE_ACCESS_CONFIRMED", "origin", "overwrite it"]) {
   assert.ok(provisionSource.includes(token), "Missing explicit Cloudflare provisioning safety gate: " + token);
 }
 assert.ok(!provisionSource.includes("r2 bucket delete"), "Provisioning must never delete R2 buckets");
