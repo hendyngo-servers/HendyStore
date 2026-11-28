@@ -318,7 +318,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
     $routes = [
         'developer_profile', 'developer_profile_save', 'developer_apps',
         'developer_upload_intent', 'developer_upload_finalize', 'developer_upload_status', 'developer_scan_refresh', 'developer_submit',
-        'developer_analytics', 'developer_crash_report',
+        'developer_analytics', 'developer_crash_report', 'developer_reviews', 'developer_review_reply',
         'trust_queue', 'trust_developer_review', 'trust_release_review', 'trust_scan_refresh',
     ];
     if (!in_array($action, $routes, true)) return false;
@@ -550,9 +550,50 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             if (!$product) json_response(['ok' => false, 'error' => 'Không tìm thấy ứng dụng thuộc hồ sơ nhà phát triển.'], 404);
             $events = $db->prepare('SELECT event_type,platform,COUNT(*) AS total FROM app_store_analytics WHERE product_id=:id GROUP BY event_type,platform ORDER BY event_type,platform');
             $events->execute([':id' => $productId]);
+            $since = date('Y-m-d H:i:s', strtotime('-30 days'));
+            $daily = $db->prepare('SELECT DATE(created_at) AS day,event_type,COUNT(*) AS total FROM app_store_analytics WHERE product_id=:id AND created_at>=:since GROUP BY DATE(created_at),event_type ORDER BY day ASC,event_type');
+            $daily->execute([':id' => $productId, ':since' => $since]);
             $crashes = $db->prepare('SELECT id,version,platform,error_message,status,created_at FROM app_crash_reports WHERE product_id=:id ORDER BY created_at DESC LIMIT 50');
             $crashes->execute([':id' => $productId]);
-            json_response(['ok' => true, 'data' => ['product' => $product, 'events' => $events->fetchAll(), 'crashes' => $crashes->fetchAll()]]);
+            json_response(['ok' => true, 'data' => ['product' => $product, 'events' => $events->fetchAll(), 'daily' => $daily->fetchAll(), 'crashes' => $crashes->fetchAll()]]);
+        }
+
+        case 'developer_reviews': {
+            require_method('GET');
+            [$user] = hendystore_security_developer($db);
+            $stmt = $db->prepare("SELECT r.id,r.product_id,r.rating,r.review_text,r.status,r.developer_reply,r.developer_reply_at,r.created_at,
+                    p.title AS product_title,u.name AS author_name
+                FROM app_product_reviews r
+                JOIN products p ON p.id=r.product_id
+                JOIN users u ON u.id=r.user_id
+                JOIN app_release_security s ON s.product_id=r.product_id
+                WHERE s.developer_user_id=:user
+                ORDER BY r.created_at DESC LIMIT 100");
+            $stmt->execute([':user' => (int)$user['id']]);
+            json_response(['ok' => true, 'data' => $stmt->fetchAll()]);
+        }
+
+        case 'developer_review_reply': {
+            require_method('POST');
+            require_csrf();
+            [$user] = hendystore_security_developer($db);
+            rate_limit_or_fail($db, 'developer-review-reply', 30, 3600);
+            $input = request_data();
+            $reviewId = (int)($input['review_id'] ?? 0);
+            $reply = trim((string)($input['reply'] ?? ''));
+            if ($reviewId < 1 || $reply === '' || strlen($reply) > 2000) {
+                json_response(['ok' => false, 'error' => 'Nội dung phản hồi phải từ 1 đến 2.000 ký tự.'], 422);
+            }
+            $stmt = $db->prepare("UPDATE app_product_reviews SET developer_reply=:reply,developer_reply_at=:now,updated_at=:now
+                WHERE id=:id AND status='approved'
+                AND product_id IN (SELECT product_id FROM app_release_security WHERE developer_user_id=:user)");
+            $now = date('Y-m-d H:i:s');
+            $stmt->execute([':reply' => $reply, ':now' => $now, ':id' => $reviewId, ':user' => (int)$user['id']]);
+            if ($stmt->rowCount() < 1) {
+                json_response(['ok' => false, 'error' => 'Chỉ có thể phản hồi đánh giá đã duyệt của ứng dụng thuộc hồ sơ nhà phát triển.'], 404);
+            }
+            hendystore_security_audit($db, (int)$user['id'], 'developer_review_replied', 'review', (string)$reviewId);
+            json_response(['ok' => true]);
         }
 
         case 'developer_crash_report': {
