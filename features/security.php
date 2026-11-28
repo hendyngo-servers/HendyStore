@@ -505,7 +505,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $versionStmt = $db->prepare("INSERT INTO app_versions(product_id,version,release_notes,platform,architecture,min_os,package_url,package_size_bytes,is_current,release_track,created_at)
                 VALUES(:product,:version,:notes,:platform,:architecture,:minos,:url,:size,1,:track,:created)");
             $releasePlatform = strtolower((string)($input['release_platform'] ?? 'universal'));
-            if (!in_array($releasePlatform, ['windows','macos','android','linux','web','universal'], true)) $releasePlatform = 'universal';
+            if (!in_array($releasePlatform, ['windows','macos','android','ios','linux','web','universal'], true)) $releasePlatform = 'universal';
             $track = (string)($input['release_track'] ?? 'production');
             if (!in_array($track, ['alpha','beta','production'], true)) $track = 'production';
             $versionStmt->execute([
@@ -559,7 +559,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $stack = mb_substr_safe(trim((string)($input['stack_trace'] ?? '')), 12000);
             $version = mb_substr_safe(trim((string)($input['version'] ?? '')), 60);
             $platform = strtolower((string)($input['platform'] ?? 'unknown'));
-            if (!in_array($platform, ['windows','macos','android','linux','web','unknown'], true)) $platform = 'unknown';
+            if (!in_array($platform, ['windows','macos','android','ios','linux','web','unknown'], true)) $platform = 'unknown';
             $stmt = $db->prepare("INSERT INTO app_crash_reports(product_id,user_id,version,platform,error_message,stack_trace,created_at)
                 VALUES(:product,:user,:version,:platform,:message,:stack,:created)");
             $stmt->execute([':product' => $productId, ':user' => (int)$user['id'], ':version' => $version, ':platform' => $platform, ':message' => $message, ':stack' => $stack, ':created' => date('Y-m-d H:i:s')]);
@@ -603,7 +603,7 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
             $status = (string)($input['status'] ?? '');
             $note = mb_substr_safe(trim((string)($input['note'] ?? '')), 2000);
             if ($productId < 1 || !in_array($status, ['approved','rejected'], true)) json_response(['ok' => false, 'error' => 'Quyết định kiểm duyệt không hợp lệ.'], 422);
-            $stmt = $db->prepare('SELECT object_key,scan_status,sha256 FROM app_release_security WHERE product_id=:id LIMIT 1');
+            $stmt = $db->prepare('SELECT object_key,scan_status,sha256,release_track FROM app_release_security WHERE product_id=:id LIMIT 1');
             $stmt->execute([':id' => $productId]);
             $release = $stmt->fetch();
             if (!$release) json_response(['ok' => false, 'error' => 'Không tìm thấy hồ sơ phát hành.'], 404);
@@ -611,8 +611,10 @@ function hendystore_security_api(PDO $db, string $action, string $method): bool
                 if ($release['scan_status'] !== 'clean' || !preg_match('/^[a-f0-9]{64}$/', (string)$release['sha256']) || !neon_storage_exists((string)$release['object_key'])) {
                     json_response(['ok' => false, 'error' => 'Không thể xuất bản: bắt buộc có kết quả quét sạch, SHA-256 hợp lệ và gói còn tồn tại trong kho riêng tư.'], 409);
                 }
-                $publish = $db->prepare("UPDATE products SET status='published',updated_at=:now WHERE id=:id");
-                $publish->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
+                if (($release['release_track'] ?? 'production') === 'production') {
+                    $publish = $db->prepare("UPDATE products SET status='published',updated_at=:now WHERE id=:id");
+                    $publish->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
+                }
             } else {
                 $reject = $db->prepare("UPDATE products SET status='rejected',featured=0,updated_at=:now WHERE id=:id");
                 $reject->execute([':now' => date('Y-m-d H:i:s'), ':id' => $productId]);
