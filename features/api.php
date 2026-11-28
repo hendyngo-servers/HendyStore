@@ -331,7 +331,7 @@ function hendystore_feature_api(PDO $db, string $action, string $method): bool
             $versionRows = $versionStmt->fetchAll();
             $versions = [];
             foreach ($versionRows as $candidate) {
-                if (hendystore_security_package_downloadable($db, (int)$product['id'], (string)$candidate['package_url'])) {
+                if (hendystore_security_package_downloadable($db, (int)$product['id'], (string)$candidate['package_url'], false)) {
                     unset($candidate['package_url']);
                     $versions[] = $candidate;
                 }
