@@ -136,7 +136,7 @@ if (d1Id) {
   if (await appendBinding(block, "DB")) report.push("Added D1 binding.");
 }
 
-// Select only the direct PHP origin or a native D1 binding; no Hyperdrive/SQL proxy.
+// Select only the direct PHP origin or a native D1 binding.
 if (process.env.CF_DATABASE_PROVIDER) {
   const value = process.env.CF_DATABASE_PROVIDER.toLowerCase();
   if (!["origin", "d1"].includes(value)) throw new Error("CF_DATABASE_PROVIDER must be origin or d1.");
