@@ -6,7 +6,7 @@ workers_dev = true
 
 [vars]
 HENDY_API_ORIGIN = "https://hendystore.onrender.com"
-DATABASE_PROVIDER = "none"
+DATABASE_PROVIDER = "origin"
 OBJECT_STORAGE_PROVIDER = "neon"
 OBJECT_STORAGE_REGION = "auto"
 OBJECT_STORAGE_FORCE_PATH_STYLE = "true"
@@ -23,19 +23,7 @@ LEGACY_ORIGIN_PROXY = "true"
 # binding = "CACHE"
 # id = "<KV_NAMESPACE_ID>"
 #
-# Optional asynchronous events queue; no consumer is deployed until a consumer handler is added.
-# [[queues.producers]]
-# binding = "EVENTS_QUEUE"
-# queue = "hendy-store-events"
-#
 # [[r2_buckets]]
 # binding = "R2"
 # bucket_name = "<R2_BUCKET_NAME>"
 #
-# [[hyperdrive]]
-# binding = "HYPERDRIVE"
-# id = "<POSTGRES_HYPERDRIVE_ID>"
-#
-# [[hyperdrive]]
-# binding = "MYSQL_HYPERDRIVE"
-# id = "<MYSQL_HYPERDRIVE_ID>"
